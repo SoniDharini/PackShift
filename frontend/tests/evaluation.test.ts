@@ -49,8 +49,8 @@ test('A: 200 mm product in a 218 mm outer box with 4 mm walls is suitable', () =
   assert.equal(advice.dimensionStatus, 'SUITABLE')
   assert.equal(advice.headline, 'Your Current Box Size Is Suitable')
   assert.equal(advice.volumeValue, '0%')
-  assert.equal(advice.sizeLine, 'Both packaging designs occupy the same outer space. Volume change: 0%.')
-  assert.match(advice.needsChange, /No dimensional redesign is needed/)
+  assert.equal(advice.sizeLine, 'Current outer size 218 × 168 × 88 mm. Recommended outer size 218 × 168 × 88 mm. Size change: 0%.')
+  assert.match(advice.needsChange, /No dimensional redesign is necessary/)
 })
 
 test('B: ₹29.39 against ₹12 is ₹17.39 per unit and ₹1,73,900 for 10,000, with the cost reason', () => {
@@ -66,7 +66,7 @@ test('B: ₹29.39 against ₹12 is ₹17.39 per unit and ₹1,73,900 for 10,000,
   assert.equal(advice.recommendationTitle, HEADINGS.KEEP)
   assert.equal(
     advice.recommendation,
-    'Keep your current box dimensions. At the current prices, replacing your existing packaging would increase costs. Explore a lower-cost board or manufacturing supplier before changing.',
+    'Keep your existing carton dimensions. The proposed replacement costs more, so explore cheaper suitable materials or manufacturing methods. The current carton already meets the geometric requirements, and no lower-cost suitable replacement has been established.',
   )
 })
 
@@ -89,7 +89,8 @@ test('D: a 280 × 220 × 120 mm outer box is larger than required with a real ou
   const { selected, all } = designs(project([200, 150, 70], { length: 280, width: 220, height: 120 }))
   const advice = evaluatePackaging(selected, all)
   assert.equal(advice.headline, 'Your Current Box Is Larger Than Required')
-  assert.equal(advice.sizeLine, '56.4% less packaging volume with a 218 × 168 × 88 mm carton.')
+  assert.equal(advice.sizeLine, 'Current outer size 280 × 220 × 120 mm. Recommended outer size 218 × 168 × 88 mm. 56.4% less packaging volume.')
+  assert.match(advice.why, /The inside is 62 mm longer, 52 mm wider and 32 mm taller than the 210 × 160 × 80 mm required\./)
   assert.match(advice.recommendation, /compare costs before recommending a change/)
 })
 

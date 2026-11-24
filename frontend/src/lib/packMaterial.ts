@@ -1,8 +1,10 @@
 import { DEFAULT_MATERIALS } from './materials.ts'
+import type { MaterialOption } from '../types/packaging.ts'
 
-export function catalogueThickness(label: string) {
+/** Thickness of a named material configuration, taken from the current (editable) material settings. */
+export function catalogueThickness(label: string, materials: readonly MaterialOption[] = DEFAULT_MATERIALS) {
   const name = label.trim().replace(/\s+/g, ' ').toLowerCase()
-  const match = DEFAULT_MATERIALS.find((material) => material.name.toLowerCase() === name)
+  const match = materials.find((material) => material.name.toLowerCase() === name)
   return match ? { name: match.name, thickness: match.thickness } : null
 }
 

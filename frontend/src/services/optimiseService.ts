@@ -158,10 +158,16 @@ export function optimiseRequest(design: PackagingDesign, preference: OptimisePre
   }
 }
 
+/** Empty in local dev, where Vite proxies `/api`. Set to the Render API origin in production. */
+export function apiUrl(path: string): string {
+  const base = import.meta.env.VITE_API_BASE?.replace(/\/$/, '') ?? ''
+  return `${base}${path}`
+}
+
 export async function fetchOptimisation(design: PackagingDesign, preference: OptimisePreference): Promise<OptimiseResult> {
   const body = optimiseRequest(design, preference)
   if (!body) throw new Error('Enter the current packaging before running optimisation.')
-  const response = await fetch('/api/optimise', {
+  const response = await fetch(apiUrl('/api/optimise'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

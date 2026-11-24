@@ -11,9 +11,10 @@ from typing import Any
 
 from services.units import litres_from_dimensions, millimetres, money
 
+# Per-axis matching tolerance for both "too small" and "larger than required".
+# It absorbs floating-point error and sizes shown to 0.1 mm; it is not a size allowance.
 TOLERANCE_MM = 0.5
-AXIS_EXCESS_MM = 10.0
-VOLUME_EXCESS_RATIO = Decimal("1.15")
+KEEP_TITLE = "Keep Existing Packaging"
 UNAVAILABLE = "Environmental comparison unavailable — additional material data is required."
 UNKNOWN_SIZE = "Current packaging dimensions cannot be fully validated. Internal carton dimensions or board specifications are required."
 
@@ -99,8 +100,7 @@ def assess_existing(
         "dimension_type": dimension_type,
         "board_thickness_mm": None if board_thickness_mm is None else millimetres(board_thickness_mm),
         "tolerance_mm": TOLERANCE_MM,
-        "oversize_axis_mm": AXIS_EXCESS_MM,
-        "oversize_volume_ratio": float(VOLUME_EXCESS_RATIO),
+        "oversize_axis_mm": TOLERANCE_MM,
         "protection_verified": False,
     }
     if dimension_type == "internal":
@@ -159,7 +159,7 @@ def assess_existing(
 def _classify(current: dict[str, float], required: dict[str, float], product: dict[str, float], source: str) -> dict[str, Any]:
     available = _clearance(current, product)
     undersized = _shorter(current, required)
-    excess_axis = any(current[name] > required[name] + AXIS_EXCESS_MM for name in ("length", "width", "height"))
+    excess_axis = any(current[name] > required[name] + TOLERANCE_MM for name in ("length", "width", "height"))
     gaps = _gaps(current, required, "internal")
     if undersized:
         fit = "undersized"
@@ -346,10 +346,10 @@ def recommendation(
         summary = manufacturing["summary"] + " Protection is still unverified, so the current pack is not replaced."
     else:
         primary_id = "KEEP_EXISTING_PACKAGING"
-        title = "Keep Your Existing Packaging"
+        title = KEEP_TITLE
         summary = (
-            "Your current packaging meets the evaluated requirements, "
-            "and no supported alternative currently offers a worthwhile improvement."
+            "The current carton already meets the geometric requirements, "
+            "and no lower-cost suitable replacement has been established."
         )
         codes.append("KEEP_EXISTING_PACKAGING")
     if "DIMENSIONS_SUITABLE" == fit["code"] and primary_id != "KEEP_EXISTING_PACKAGING":
@@ -415,7 +415,7 @@ def explain_advisor(
         recommendation_label = "Correct Insufficient Space"
         headline = "Your Current Box Is Too Small"
         needs_change = "Yes. The box needs to become larger."
-        why = fit.get("summary") or "Your existing box does not provide enough space for your product and its required clearance."
+        why = fit.get("summary") or "Your current packaging does not provide enough space for the product and specified clearance."
         next_step = "Your box needs more space to meet the specified clearance. Correct the dimensions before evaluating cost savings."
         if reduction is not None and reduction < -0.05:
             size_line = f"Proposed carton is {abs(reduction):.1f}% larger."
@@ -425,7 +425,7 @@ def explain_advisor(
         recommendation_label = "Resize Packaging"
         headline = "Your Current Box Is Larger Than Required"
         needs_change = "Yes. The box could become smaller."
-        why = "Your existing box has more space than necessary. A smaller carton may reduce packaging space."
+        why = "Your current packaging has more space than the calculated requirement. A smaller carton may reduce packaging volume."
         next_step = "Your box could be smaller. The proposed dimensions reduce packaging volume, but we also need to compare costs before recommending a change."
         if reduction is not None and reduction > 0.05:
             size_line = f"{reduction:.1f}% less packaging volume."
@@ -433,20 +433,24 @@ def explain_advisor(
             size_line = "A smaller carton may reduce packaging space. The outer-volume change needs the wall thickness or outside size of the current box."
     else:
         headline = "Your Current Box Size Is Suitable"
-        needs_change = "No. No dimensional redesign is needed."
-        why = "Your current box already provides enough space for the product and the required clearance. No dimensional redesign is needed."
+        needs_change = "No. No dimensional redesign is necessary."
+        why = (
+            "Your existing packaging already provides the required space for the product and the specified clearance. "
+            "No dimensional redesign is necessary."
+        )
         if cheaper:
             recommendation_label = "Explore Cheaper Material"
             next_step = "A lower-cost material option is available. Review its estimated savings and protection requirements before switching."
         elif proposal_costs_more:
-            recommendation_label = "Keep Your Existing Packaging"
+            recommendation_label = KEEP_TITLE
             next_step = (
-                "Keep your current box dimensions. At the current prices, replacing your existing packaging would "
-                "increase costs. Explore a lower-cost board or manufacturing supplier before changing."
+                "Keep your existing carton dimensions. The proposed replacement costs more, so explore cheaper suitable "
+                "materials or manufacturing methods. The current carton already meets the geometric requirements, and no "
+                "lower-cost suitable replacement has been established."
             )
         else:
-            recommendation_label = "Keep Your Existing Packaging"
-            next_step = "Keep your existing box dimensions. Explore material or manufacturing improvements if you want to reduce costs."
+            recommendation_label = KEEP_TITLE
+            next_step = "Keep your current box dimensions. You can still explore cost, material and manufacturing improvements."
         if reduction is None:
             size_line = "Outer volume change needs the outside size of the current box."
         elif abs(reduction) <= 0.05:
@@ -459,7 +463,7 @@ def explain_advisor(
         "fit": kind,
         "headline": headline,
         "recommendation": recommendation_label,
-        "recommendation_title": "Keep Your Existing Packaging" if recommendation_label == "Keep Your Existing Packaging" else headline,
+        "recommendation_title": KEEP_TITLE if recommendation_label == KEEP_TITLE else headline,
         "needs_change": needs_change,
         "why": why,
         "next": next_step,

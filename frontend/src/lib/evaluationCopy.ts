@@ -10,6 +10,7 @@ export type EvaluationStatus =
   | 'Your Current Box Is Larger Than Required'
   | 'Your Current Box Is Too Small'
   | 'Current Box Size Cannot Be Verified'
+  | 'Your New Carton Size'
 
 export interface EvaluationView {
   status: EvaluationStatus

@@ -1,5 +1,5 @@
 import { isCorrugatedBoard } from './packMaterial.ts'
-import type { Fragility, Mode, ParsedProject, ProductForm } from '../types/packaging.ts'
+import type { Fragility, Mode, PackagingDesign, ParsedProject, ProductForm } from '../types/packaging.ts'
 import { CATEGORIES } from '../types/packaging.ts'
 
 export type FieldErrors = Partial<Record<keyof ProductForm | 'form', string>>
@@ -31,6 +31,27 @@ function readNumber(
     return { error: `${capitalize(label)} must be between ${min} and ${max}.` }
   }
   return { value }
+}
+
+function mmText(value: number) {
+  return String(Number(value.toFixed(2)))
+}
+
+/**
+ * Redesign inputs that describe a generated carton as the current box: the product,
+ * clearance and quantity it was generated for, its outer size, and its own wall thickness.
+ */
+export function generatedCartonForm(source: ProductForm, design: PackagingDesign, existingUnitCost: string): ProductForm {
+  return {
+    ...source,
+    existingLength: mmText(design.external.l),
+    existingWidth: mmText(design.external.w),
+    existingHeight: mmText(design.external.h),
+    existingBasis: 'external',
+    existingThickness: mmText(design.thickness),
+    existingMaterial: design.material.name,
+    existingUnitCost,
+  }
 }
 
 export function parseForm(form: ProductForm, mode: Mode): ParseResult {

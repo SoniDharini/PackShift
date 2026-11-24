@@ -88,11 +88,12 @@ def test_product_200_outer_218_with_4mm_board_is_suitable():
     assert fit["fit"] == "suitable"
     assert fit["shortfalls"] == []
     advisor = body["evaluation"]["advisor"]
-    assert advisor["recommendation"] == "Keep Your Existing Packaging"
-    assert advisor["recommendation_title"] == "Keep Your Existing Packaging"
+    assert advisor["recommendation"] == "Keep Existing Packaging"
+    assert advisor["recommendation_title"] == "Keep Existing Packaging"
     assert advisor["headline"] == "Your Current Box Size Is Suitable"
-    assert advisor["needs_change"] == "No. No dimensional redesign is needed."
-    assert "replacing your existing packaging would increase costs" in advisor["next"]
+    assert advisor["needs_change"] == "No. No dimensional redesign is necessary."
+    assert "The proposed replacement costs more" in advisor["next"]
+    assert "no lower-cost suitable replacement has been established" in advisor["next"]
     assert advisor["outer_volume_reduction_percent"] == 0
     assert "same outer space" in advisor["size_line"]
     assert "220" not in advisor["why"]
@@ -102,17 +103,68 @@ def test_product_200_outer_218_with_4mm_board_is_suitable():
     assert round(body["comparison"]["change_percent"], 1) == 144.9
 
 
-def test_clearance_volume_does_not_make_a_near_fit_carton_oversized():
+def test_clearance_is_not_treated_as_excess_but_8mm_extra_inside_is():
     payload = _device()
-    payload["current_packaging"]["dimensions_mm"] = {"length": 218, "width": 168, "height": 88}
-    payload["current_packaging"]["dimension_type"] = "internal"
-    payload["current_packaging"]["board_thickness_mm"] = 4
     body = run_optimise(payload)
-    fit = body["evaluation"]["dimensional"]
-    assert fit["fit"] == "suitable"
+    assert body["evaluation"]["dimensional"]["fit"] == "suitable"
+
+    payload["current_packaging"]["dimensions_mm"] = {"length": 218, "width": 168, "height": 88}
+    payload["current_packaging"]["board_thickness_mm"] = 4
+    fit = run_optimise(payload)["evaluation"]["dimensional"]
     assert fit["current_internal_mm"] == {"length": 218.0, "width": 168.0, "height": 88.0}
-    assert body["evaluation"]["advisor"]["headline"] == "Your Current Box Size Is Suitable"
-    assert body["evaluation"]["advisor"]["outer_volume_reduction_percent"] is None
+    assert fit["fit"] == "oversized"
+
+
+def test_matching_tolerance_is_small_on_both_sides():
+    payload = _device()
+    payload["current_packaging"]["dimensions_mm"] = {"length": 210.3, "width": 160, "height": 80}
+    assert run_optimise(payload)["evaluation"]["dimensional"]["fit"] == "suitable"
+    payload["current_packaging"]["dimensions_mm"] = {"length": 211, "width": 160, "height": 80}
+    assert run_optimise(payload)["evaluation"]["dimensional"]["fit"] == "oversized"
+    payload["current_packaging"]["dimensions_mm"] = {"length": 209, "width": 160, "height": 80}
+    assert run_optimise(payload)["evaluation"]["dimensional"]["fit"] == "undersized"
+
+
+def test_generated_carton_round_trips_as_suitable():
+    first = run_optimise(_device())
+    generated = first["current_generated"]
+    payload = _device()
+    payload["current_packaging"]["dimensions_mm"] = generated["outer_dimensions_mm"]
+    payload["current_packaging"]["dimension_type"] = "external"
+    payload["current_packaging"]["board_thickness_mm"] = generated["thickness_mm"]
+    body = run_optimise(payload)
+    assert body["evaluation"]["dimensional"]["fit"] == "suitable"
+    assert body["evaluation"]["advisor"]["outer_volume_reduction_percent"] == 0
+
+    smaller = _device()
+    smaller["product"]["dimensions_mm"] = {"length": 100, "width": 80, "height": 40}
+    smaller["current_packaging"]["dimensions_mm"] = {"length": 118, "width": 98, "height": 58}
+    smaller["current_packaging"]["dimension_type"] = "external"
+    smaller["current_packaging"]["board_thickness_mm"] = 4
+    fit = run_optimise(smaller)["evaluation"]["dimensional"]
+    assert fit["required_internal_mm"] == {"length": 110.0, "width": 90.0, "height": 50.0}
+    assert fit["fit"] == "suitable"
+
+
+def test_many_generated_cartons_round_trip_as_suitable():
+    import random
+
+    from services.pack_fit import assess_existing
+
+    rng = random.Random(20261125)
+    for _ in range(500):
+        product = {name: round(rng.uniform(5, 600), 1) for name in ("length", "width", "height")}
+        gap = round(rng.uniform(0, 40), 1)
+        thickness = round(rng.uniform(1, 15), 2)
+        outer = {name: product[name] + 2 * gap + 2 * thickness for name in product}
+        fit = assess_existing(
+            product=product,
+            clearance={"length": gap, "width": gap, "height": gap},
+            stated=outer,
+            dimension_type="external",
+            board_thickness_mm=thickness,
+        )
+        assert fit["fit"] == "suitable", (product, gap, thickness, fit["current_internal_mm"])
 
 
 def test_product_210_reports_10mm_internal_length_shortfall_not_the_outer_size():

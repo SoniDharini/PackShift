@@ -1,0 +1,49 @@
+# Render Blueprint. Connect this repo in the Render dashboard as a Blueprint.
+# Pushes to main run .github/workflows/ci.yml. Both services deploy only after those checks pass.
+services:
+  - type: web
+    name: packshift-api
+    runtime: python
+    region: singapore
+    branch: main
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - backend/**
+        - render.yaml
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: PACKSHIFT_CORS_ORIGINS
+        value: https://packshift-web.onrender.com
+      - key: PACKSHIFT_CORS_ORIGIN_REGEX
+        value: "https://packshift-web[\\w-]*\\.onrender\\.com"
+
+  - type: web
+    name: packshift-web
+    runtime: static
+    branch: main
+    rootDir: frontend
+    buildCommand: npm ci --include=dev && npm run build
+    staticPublishPath: dist
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - frontend/**
+        - render.yaml
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: VITE_API_BASE
+        fromService:
+          name: packshift-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL

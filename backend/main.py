@@ -22,10 +22,12 @@ app = FastAPI(
 
 _default_origins = "http://localhost:5173,http://127.0.0.1:5173"
 _origins = [origin.strip() for origin in os.getenv("PACKSHIFT_CORS_ORIGINS", _default_origins).split(",") if origin.strip()]
+_origin_regex = os.getenv("PACKSHIFT_CORS_ORIGIN_REGEX", "").strip()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
+    allow_origin_regex=_origin_regex or None,
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],

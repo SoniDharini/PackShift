@@ -20,7 +20,8 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 export function InputPanel({ onGenerated }: { onGenerated?: () => void }) {
-  const { mode, form, errors, status, liveDesign, isDirty, setMode, setField, generate, resetExample } = useDesign()
+  const { mode, form, errors, status, liveDesign, committedDesign, materials, isDirty, setMode, setField, generate, resetExample, applyGeneratedCarton } =
+    useDesign()
   const corrugated = isCorrugatedBoard(form.existingMaterial)
   const live = mode === 'redesign' ? parseForm(form, mode) : null
   const liveErrors = live && !live.ok ? live.errors : {}
@@ -37,15 +38,26 @@ export function InputPanel({ onGenerated }: { onGenerated?: () => void }) {
         : 'Choose outside or inside dimensions first.'
 
   const prefillThickness = (material: string) => {
-    if (form.existingThickness.trim()) return
-    const catalogue = catalogueThickness(material)
-    if (catalogue) setField('existingThickness', String(catalogue.thickness))
+    const next = catalogueThickness(material, materials)
+    if (!next) return
+    const previous = catalogueThickness(form.existingMaterial, materials)
+    const typed = form.existingThickness.trim()
+    if (!typed || (previous && Number(typed) === previous.thickness)) setField('existingThickness', String(next.thickness))
   }
 
-  const catalogue = catalogueThickness(form.existingMaterial)
+  const generated = committedDesign
+  const generatedMatches =
+    generated !== null &&
+    form.existingBasis === 'external' &&
+    Number(form.existingLength) === Number(generated.external.l.toFixed(2)) &&
+    Number(form.existingWidth) === Number(generated.external.w.toFixed(2)) &&
+    Number(form.existingHeight) === Number(generated.external.h.toFixed(2)) &&
+    Number(form.existingThickness) === generated.thickness
+
+  const catalogue = catalogueThickness(form.existingMaterial, materials)
   const thicknessNote =
     corrugated && catalogue && form.existingBasis !== 'unspecified' && Number(form.existingThickness) === catalogue.thickness
-      ? `${catalogue.thickness} mm is the catalogue thickness for ${catalogue.name}. Change it if your box walls are different.`
+      ? `${formatNumber(catalogue.thickness)} mm is the thickness set for ${catalogue.name}. Change it if your box walls are different.`
       : null
 
   let derivedLine: string | null = null
@@ -169,6 +181,15 @@ export function InputPanel({ onGenerated }: { onGenerated?: () => void }) {
 
         {mode === 'redesign' ? (
           <Section title="Current packaging">
+            {generated && !generatedMatches ? (
+              <button
+                type="button"
+                onClick={applyGeneratedCarton}
+                className="inline-flex items-center gap-1.5 text-left text-xs font-medium text-emerald-deep hover:text-forest"
+              >
+                Use the generated carton ({formatDims(generated.external)}, {formatNumber(generated.thickness)} mm wall) as current packaging
+              </button>
+            ) : null}
             <p className="text-xs font-medium text-forest">Which measurements are you entering?</p>
             <Segmented<'internal' | 'external' | 'unspecified'>
               label="Which measurements are you entering?"

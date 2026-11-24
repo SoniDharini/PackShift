@@ -73,8 +73,10 @@ function EvaluationBoard({ design, evaluation, peers }: { design: PackagingDesig
               : view.headline === 'Your Current Box Is Too Small'
                 ? 'Correct the size. Do not describe the change as a saving.'
                 : view.headline === 'Your Current Box Size Is Suitable'
-                  ? 'No dimensional redesign is needed. Keep the current size and review the other three areas.'
-                  : 'Add the internal size, or the outer size and board thickness.'
+                  ? 'No dimensional redesign is required. Keep the current size and review material, manufacturing and sustainability below.'
+                  : view.headline === 'Your New Carton Size'
+                    ? 'Use this size for the new carton. To check a box you already use, switch to Redesign existing packaging.'
+                    : 'Add the internal size, or the outer size and board thickness.'
           }
           missing={view.headline === 'Current Box Size Cannot Be Verified' ? view.answerWhy : `Required clearance ${sizeText(fit.required_clearance_mm)}.`}
         />

@@ -22,22 +22,29 @@ function round1(value: number) {
   return Math.round(value * 10) / 10
 }
 
+/** Required inside size: the product plus the clearance on both faces of each axis. */
+export function requiredInternal(product: Size3, clearance: number): Size3 {
+  return { l: product.l + 2 * clearance, w: product.w + 2 * clearance, h: product.h + 2 * clearance }
+}
+
+/** Planning estimate of the outside size: one wall on every face. Not a certified manufacturing dimension. */
+export function outerFromInternal(internal: Size3, thickness: number): Size3 {
+  return { l: internal.l + 2 * thickness, w: internal.w + 2 * thickness, h: internal.h + 2 * thickness }
+}
+
+/** Inverse of `outerFromInternal`. Use the wall thickness of the box being measured. */
+export function internalFromOuter(outer: Size3, thickness: number): Size3 {
+  return { l: outer.l - 2 * thickness, w: outer.w - 2 * thickness, h: outer.h - 2 * thickness }
+}
+
 /**
  * Deterministic RSC estimator.
  * The future `POST /api/design` response should use this same contract.
  */
 export function calculateDesign(project: ParsedProject, material: MaterialOption): PackagingDesign {
-  const internal: Size3 = {
-    l: project.length + 2 * project.clearance,
-    w: project.width + 2 * project.clearance,
-    h: project.height + 2 * project.clearance,
-  }
+  const internal = requiredInternal({ l: project.length, w: project.width, h: project.height }, project.clearance)
   const thickness = material.thickness
-  const external: Size3 = {
-    l: internal.l + 2 * thickness,
-    w: internal.w + 2 * thickness,
-    h: internal.h + 2 * thickness,
-  }
+  const external = outerFromInternal(internal, thickness)
   const glueFlap = GLUE_FLAP_MM
   const flapDepth = internal.w / 2
   const slotWidth = round1(Math.min(Math.max(8, thickness * 2), Math.min(internal.l, internal.w) / 3))

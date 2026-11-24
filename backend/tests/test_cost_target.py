@@ -41,7 +41,7 @@ def test_no_catalogue_board_beats_twelve_rupees_so_keep_existing():
     assert report["cheapest_below_target"] is None
     assert all(item["protection_validated"] is False for item in report["options"])
     assert report["summary"].startswith("No lower-cost replacement has been established.")
-    assert body["evaluation"]["advisor"]["recommendation_title"] == "Keep Your Existing Packaging"
+    assert body["evaluation"]["advisor"]["recommendation_title"] == "Keep Existing Packaging"
 
 
 def test_hypothetical_low_cost_supplier_is_a_demonstration_saving():

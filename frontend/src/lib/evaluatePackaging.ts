@@ -1,19 +1,24 @@
+import { internalFromOuter, outerFromInternal } from './calculations.ts'
 import { evaluateCost, type CostEvaluation } from './costEvaluation.ts'
 import { formatDims, formatMoney, formatNumber, formatPct } from './format.ts'
 import { isCorrugatedBoard } from './packMaterial.ts'
 import type { PackagingDesign, Size3 } from '../types/packaging.ts'
 
-const TOLERANCE_MM = 0.5
-const AXIS_EXCESS_MM = 10
+/**
+ * Per-axis matching tolerance, used for both "too small" and "larger than required".
+ * It absorbs floating-point error and sizes shown to 0.1 mm; it is not a size allowance.
+ */
+export const FIT_TOLERANCE_MM = 0.5
 
-export type DimensionStatus = 'SUITABLE' | 'OVERSIZED' | 'UNDERSIZED' | 'INSUFFICIENT_INFORMATION'
+export type DimensionStatus = 'SUITABLE' | 'OVERSIZED' | 'UNDERSIZED' | 'INSUFFICIENT_INFORMATION' | 'NEW_DESIGN'
 
 export const HEADINGS = {
   SUITABLE: 'Your Current Box Size Is Suitable',
   OVERSIZED: 'Your Current Box Is Larger Than Required',
   UNDERSIZED: 'Your Current Box Is Too Small',
   INSUFFICIENT_INFORMATION: 'Current Box Size Cannot Be Verified',
-  KEEP: 'Keep Your Existing Packaging',
+  NEW_DESIGN: 'Your New Carton Size',
+  KEEP: 'Keep Existing Packaging',
 } as const
 
 export interface PackagingEvaluation {
@@ -45,18 +50,18 @@ const AXES = [
 ] as const
 
 function shorter(current: Size3, required: Size3) {
-  return AXES.some(([, key]) => current[key] + TOLERANCE_MM < required[key])
+  return AXES.some(([, key]) => current[key] + FIT_TOLERANCE_MM < required[key])
 }
 
 function excess(current: Size3, required: Size3) {
-  return AXES.some(([, key]) => current[key] > required[key] + AXIS_EXCESS_MM)
+  return AXES.some(([, key]) => current[key] > required[key] + FIT_TOLERANCE_MM)
 }
 
 function internalShortfall(current: Size3, required: Size3, product: Size3) {
-  const gaps = AXES.filter(([, key]) => current[key] + TOLERANCE_MM < required[key])
+  const gaps = AXES.filter(([, key]) => current[key] + FIT_TOLERANCE_MM < required[key])
   const needs = gaps.map(([axis, key]) => `${formatNumber(required[key] - current[key])} mm more internal ${axis}`).join(', ')
   const sentence = `The box needs ${needs} to meet your required clearance.`
-  const blocked = gaps.filter(([, key]) => current[key] + TOLERANCE_MM < product[key])
+  const blocked = gaps.filter(([, key]) => current[key] + FIT_TOLERANCE_MM < product[key])
   if (blocked.length) {
     const detail = blocked
       .map(([axis, key]) => `the inside ${axis} is ${formatNumber(current[key])} mm and the product is ${formatNumber(product[key])} mm`)
@@ -67,7 +72,7 @@ function internalShortfall(current: Size3, required: Size3, product: Size3) {
 }
 
 function statedShortfall(stated: Size3, required: Size3) {
-  return AXES.filter(([, key]) => stated[key] + TOLERANCE_MM < required[key])
+  return AXES.filter(([, key]) => stated[key] + FIT_TOLERANCE_MM < required[key])
     .map(([axis, key]) => `the stated ${axis} of ${formatNumber(stated[key])} mm is already below the ${formatNumber(required[key])} mm inside size`)
     .join('; ')
 }
@@ -79,27 +84,38 @@ function outerChange(existingOuter: Size3, proposedOuter: Size3) {
   return ((proposed - current) / current) * 100
 }
 
-function sizeFromChange(change: number | null, proposedOuter?: Size3): { sizeLine: string; volumeValue: string } {
-  if (change === null) {
+function sizeFromChange(change: number | null, existingOuter: Size3 | null, proposedOuter: Size3): { sizeLine: string; volumeValue: string } {
+  const recommended = `Recommended outer size ${formatDims(proposedOuter)}.`
+  if (change === null || !existingOuter) {
     return {
-      sizeLine: 'Outer volume change needs the outside size of the current box.',
+      sizeLine: `${recommended} Outer volume change needs the wall thickness or outside size of the current box.`,
       volumeValue: 'Outer size needed',
     }
   }
+  const sizes = `Current outer size ${formatDims(existingOuter)}. ${recommended}`
   if (Math.abs(change) <= 0.05) {
-    return {
-      sizeLine: 'Both packaging designs occupy the same outer space. Volume change: 0%.',
-      volumeValue: '0%',
-    }
+    return { sizeLine: `${sizes} Size change: 0%.`, volumeValue: '0%' }
   }
   if (change > 0) {
-    return { sizeLine: `Proposed carton is ${formatPct(change)} larger. This is not a saving.`, volumeValue: `${formatPct(change)} larger` }
+    return {
+      sizeLine: `${sizes} The recommended carton is ${formatPct(change)} larger so the product and clearance fit. This is not a saving.`,
+      volumeValue: `${formatPct(change)} larger`,
+    }
   }
-  const candidate = proposedOuter ? ` with a ${formatDims(proposedOuter)} carton` : ''
-  return { sizeLine: `${formatPct(Math.abs(change))} less packaging volume${candidate}.`, volumeValue: `${formatPct(Math.abs(change))} smaller` }
+  return { sizeLine: `${sizes} ${formatPct(Math.abs(change))} less packaging volume.`, volumeValue: `${formatPct(Math.abs(change))} smaller` }
 }
 
-export function evaluateDimensions(design: PackagingDesign): PackagingEvaluation {
+function excessLine(current: Size3, required: Size3) {
+  const words = { length: 'longer', width: 'wider', height: 'taller' } as const
+  const parts = AXES.filter(([, key]) => current[key] > required[key] + FIT_TOLERANCE_MM).map(
+    ([axis, key]) => `${formatNumber(current[key] - required[key])} mm ${words[axis]}`,
+  )
+  const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]
+  return `The inside is ${list} than the ${formatDims(required)} required.`
+}
+
+/** The single size decision used by Design Studio, Redesign and Optimisation. */
+export function evaluatePackagingDimensions(design: PackagingDesign): PackagingEvaluation {
   const requiredInner = design.internal
   const proposedOuter = design.external
   const base = {
@@ -114,12 +130,12 @@ export function evaluateDimensions(design: PackagingDesign): PackagingEvaluation
   if (!existing || design.mode !== 'redesign') {
     return {
       ...base,
-      dimensionStatus: 'INSUFFICIENT_INFORMATION',
-      headline: HEADINGS.INSUFFICIENT_INFORMATION,
-      needsChange: 'There is no current box to check.',
-      why: 'Switch to redesign and enter the box you use today.',
-      sizeLine: 'No current box to compare.',
-      volumeValue: 'Not compared',
+      dimensionStatus: 'NEW_DESIGN',
+      headline: HEADINGS.NEW_DESIGN,
+      needsChange: 'This is a new carton, so there is no current box to check.',
+      why: `The inside size is the product plus ${formatNumber(design.clearance)} mm clearance on every face. The outside size adds ${formatNumber(design.thickness)} mm of board on every face.`,
+      sizeLine: `Recommended inside size ${formatDims(requiredInner)}. Recommended outer size ${formatDims(proposedOuter)}.`,
+      volumeValue: 'New carton',
     }
   }
 
@@ -130,15 +146,11 @@ export function evaluateDimensions(design: PackagingDesign): PackagingEvaluation
 
   if (existing.basis === 'internal') {
     existingInner = existing.size
-    if (corrugated && existing.thicknessMm !== null) {
-      const thickness = existing.thicknessMm
-      existingOuter = { l: existing.size.l + 2 * thickness, w: existing.size.w + 2 * thickness, h: existing.size.h + 2 * thickness }
-    }
+    if (corrugated && existing.thicknessMm !== null) existingOuter = outerFromInternal(existing.size, existing.thicknessMm)
   } else if (existing.basis === 'external') {
     existingOuter = existing.size
     if (corrugated && existing.thicknessMm !== null) {
-      const thickness = existing.thicknessMm
-      const inner = { l: existing.size.l - 2 * thickness, w: existing.size.w - 2 * thickness, h: existing.size.h - 2 * thickness }
+      const inner = internalFromOuter(existing.size, existing.thicknessMm)
       if (inner.l <= 0 || inner.w <= 0 || inner.h <= 0) {
         missing = 'The wall thickness is not smaller than the outside size, so the inside space cannot be estimated.'
       } else {
@@ -151,11 +163,11 @@ export function evaluateDimensions(design: PackagingDesign): PackagingEvaluation
         dimensionStatus: 'UNDERSIZED',
         headline: HEADINGS.UNDERSIZED,
         needsChange: 'Yes. The box needs to become larger.',
-        why: `Your existing box does not provide enough space for your product and its required clearance: ${statedShortfall(existing.size, requiredInner)}.`,
+        why: `Your current packaging does not provide enough space for the product and specified clearance: ${statedShortfall(existing.size, requiredInner)}.`,
         existingOuter,
         existingOuterKnown: true,
         volumeChangePercent: change,
-        ...sizeFromChange(change),
+        ...sizeFromChange(change, existingOuter, proposedOuter),
       }
     } else if (!corrugated) {
       missing = `${existing.materialLabel} is not corrugated board, so a wall thickness cannot be used to find the inside space. Enter the inside size if you know it.`
@@ -168,6 +180,7 @@ export function evaluateDimensions(design: PackagingDesign): PackagingEvaluation
 
   const change = existingOuter ? outerChange(existingOuter, proposedOuter) : null
   const shared = { ...base, existingInner, existingOuter, existingOuterKnown: existingOuter !== null, volumeChangePercent: change }
+  const sized = sizeFromChange(change, existingOuter, proposedOuter)
 
   if (!existingInner) {
     return {
@@ -187,21 +200,19 @@ export function evaluateDimensions(design: PackagingDesign): PackagingEvaluation
       dimensionStatus: 'UNDERSIZED',
       headline: HEADINGS.UNDERSIZED,
       needsChange: 'Yes. The box needs to become larger.',
-      why: `Your existing box does not provide enough space for your product and its required clearance. ${internalShortfall(existingInner, requiredInner, design.product)}`,
-      ...sizeFromChange(change),
+      why: `Your current packaging does not provide enough space for the product and specified clearance. ${internalShortfall(existingInner, requiredInner, design.product)}`,
+      ...sized,
     }
   }
 
   if (excess(existingInner, requiredInner)) {
-    const sized = sizeFromChange(change, proposedOuter)
     return {
       ...shared,
       dimensionStatus: 'OVERSIZED',
       headline: HEADINGS.OVERSIZED,
       needsChange: 'Yes. The box could become smaller.',
-      why: 'Your existing box has more space than necessary. A smaller carton may reduce packaging space.',
-      sizeLine: change === null ? 'A smaller carton may reduce packaging space. The outer-volume change needs the wall thickness or outside size of the current box.' : sized.sizeLine,
-      volumeValue: sized.volumeValue,
+      why: `Your current packaging has more space than the calculated requirement. A smaller carton may reduce packaging volume. ${excessLine(existingInner, requiredInner)}`,
+      ...sized,
     }
   }
 
@@ -209,20 +220,23 @@ export function evaluateDimensions(design: PackagingDesign): PackagingEvaluation
     ...shared,
     dimensionStatus: 'SUITABLE',
     headline: HEADINGS.SUITABLE,
-    needsChange: 'No. No dimensional redesign is needed.',
-    why: 'Your current box already provides enough space for the product and the required clearance. No dimensional redesign is needed.',
-    ...sizeFromChange(change),
+    needsChange: 'No. No dimensional redesign is necessary.',
+    why: 'Your existing packaging already provides the required space for the product and the specified clearance. No dimensional redesign is necessary.',
+    ...sized,
   }
 }
 
 export function evaluatePackaging(design: PackagingDesign, peers: PackagingDesign[] = []): PackagingAdvice {
-  const size = evaluateDimensions(design)
+  const size = evaluatePackagingDimensions(design)
   const cost = evaluateCost(design, peers)
   const perUnit = cost.perUnitDifference
   let recommendationTitle: string
   let recommendation: string
 
-  if (size.dimensionStatus === 'INSUFFICIENT_INFORMATION') {
+  if (size.dimensionStatus === 'NEW_DESIGN') {
+    recommendationTitle = 'Use This Carton Size'
+    recommendation = `Use ${formatDims(size.proposedOuter)} as the outer size of the new carton. To check a box you already use, switch to Redesign existing packaging.`
+  } else if (size.dimensionStatus === 'INSUFFICIENT_INFORMATION') {
     recommendationTitle = 'More Information Needed'
     recommendation = design.existing
       ? 'Provide the inside measurements or the wall thickness of your current box, then generate again. The cost comparison is still shown.'
@@ -244,10 +258,10 @@ export function evaluatePackaging(design: PackagingDesign, peers: PackagingDesig
   } else if (perUnit !== null && perUnit > 0) {
     recommendationTitle = HEADINGS.KEEP
     recommendation =
-      'Keep your current box dimensions. At the current prices, replacing your existing packaging would increase costs. Explore a lower-cost board or manufacturing supplier before changing.'
+      'Keep your existing carton dimensions. The proposed replacement costs more, so explore cheaper suitable materials or manufacturing methods. The current carton already meets the geometric requirements, and no lower-cost suitable replacement has been established.'
   } else {
     recommendationTitle = HEADINGS.KEEP
-    recommendation = 'Your current packaging meets the evaluated requirements, and no supported alternative currently offers a worthwhile improvement. Keep your existing box dimensions. Explore material or manufacturing improvements if you want to reduce costs.'
+    recommendation = 'Keep your current box dimensions. You can still explore cost, material and manufacturing improvements.'
   }
 
   const next = recommendationTitle === HEADINGS.KEEP ? `${HEADINGS.KEEP}. ${recommendation}` : recommendation

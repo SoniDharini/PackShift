@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { calculateDesign } from '../lib/calculations.ts'
 import { EXAMPLE_FORM, EXAMPLE_MODE } from '../lib/example.ts'
 import { cloneMaterials } from '../lib/materials.ts'
-import { parseForm, type FieldErrors } from '../lib/validation.ts'
+import { generatedCartonForm, parseForm, type FieldErrors } from '../lib/validation.ts'
 import { generateDesign } from '../services/designService.ts'
 import { fetchOptimisation, optimiseRequest, type OptimisePreference, type OptimiseResult } from '../services/optimiseService.ts'
 import type { MaterialId, MaterialOption, Mode, PackagingDesign, ProductForm } from '../types/packaging.ts'
@@ -36,6 +36,7 @@ interface DesignContextValue {
   updateCommittedFields: (partial: Partial<Pick<ProductForm, SharedKey>>) => void
   resetMaterials: () => void
   resetExample: () => void
+  applyGeneratedCarton: () => void
   generate: () => Promise<boolean>
 }
 
@@ -228,6 +229,13 @@ export function DesignProvider({ children }: { children: ReactNode }) {
   const committedDesignRef = useRef(committedDesign)
   committedDesignRef.current = committedDesign
 
+  const applyGeneratedCarton = useCallback(() => {
+    const design = committedDesignRef.current
+    if (!design) return
+    setMode('redesign')
+    setForm((current) => generatedCartonForm(committedRef.current, design, current.existingUnitCost))
+  }, [])
+
   useEffect(() => {
     const design = committedDesignRef.current
     if (!optimiseKey || !design) {
@@ -288,6 +296,7 @@ export function DesignProvider({ children }: { children: ReactNode }) {
       updateCommittedFields,
       resetMaterials,
       resetExample,
+      applyGeneratedCarton,
       generate,
     }),
     [
@@ -314,6 +323,7 @@ export function DesignProvider({ children }: { children: ReactNode }) {
       updateCommittedFields,
       resetMaterials,
       resetExample,
+      applyGeneratedCarton,
       generate,
     ],
   )
