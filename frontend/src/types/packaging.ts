@@ -39,6 +39,8 @@ export interface ProductForm {
   existingLength: string
   existingWidth: string
   existingHeight: string
+  existingBasis: 'internal' | 'external' | 'unspecified'
+  existingThickness: string
   existingMaterial: string
   existingUnitCost: string
 }
@@ -60,6 +62,8 @@ export interface ParsedProject {
     height: number
     material: string
     unitCost: number
+    basis: 'internal' | 'external' | 'unspecified'
+    thicknessMm: number | null
   } | null
 }
 
@@ -74,6 +78,8 @@ export interface ExistingResult {
   emptySpacePct: number
   unitCost: number
   materialLabel: string
+  basis: 'internal' | 'external' | 'unspecified'
+  thicknessMm: number | null
   estimatedBlankAreaM2: number
   blankLength: number
   blankWidth: number

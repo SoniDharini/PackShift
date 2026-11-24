@@ -1,0 +1,69 @@
+{
+  "version": "2026-11-23",
+  "notice": "Nominal flute calipers are demonstration labels for planning. The board rate is the existing PackShift demonstration rate, not a market price or a supplier quote. ECT, compression, recycled content, food-contact approval and environmental factors are not loaded.",
+  "cost_parameters": {
+    "waste_factor": 0,
+    "cutting_cost_inr": 0,
+    "printing_cost_inr": null,
+    "joining_cost_inr": 0,
+    "cushioning_cost_inr": 0,
+    "notes": [
+      "Waste, cutting and joining are explicitly zero so the simplified C-flute quote matches the studio planner.",
+      "No printing rate is loaded, so printing is omitted instead of estimated.",
+      "No cushioning material is specified. Clearance is empty space and its material cost is zero."
+    ]
+  },
+  "profiles": [
+    {
+      "id": "e_flute",
+      "name": "E-flute single wall",
+      "flute": "E",
+      "thickness_mm": 1.5,
+      "grammage_g_m2": null,
+      "price_inr_per_m2": 72,
+      "price_basis": "demonstration_assumption",
+      "price_source": "PackShift studio demonstration rate. Not a supplier quote.",
+      "price_as_of": "2026-11-22",
+      "conversion_cost_inr": 16,
+      "ect_kn_per_m": null,
+      "compression_n": null,
+      "recycled_content_percent": null,
+      "food_contact_documented": null,
+      "environmental_impact_factor": null
+    },
+    {
+      "id": "b_flute",
+      "name": "B-flute single wall",
+      "flute": "B",
+      "thickness_mm": 3,
+      "grammage_g_m2": null,
+      "price_inr_per_m2": 72,
+      "price_basis": "demonstration_assumption",
+      "price_source": "PackShift studio demonstration rate. Not a supplier quote.",
+      "price_as_of": "2026-11-22",
+      "conversion_cost_inr": 16,
+      "ect_kn_per_m": null,
+      "compression_n": null,
+      "recycled_content_percent": null,
+      "food_contact_documented": null,
+      "environmental_impact_factor": null
+    },
+    {
+      "id": "c_flute",
+      "name": "C-flute single wall",
+      "flute": "C",
+      "thickness_mm": 4,
+      "grammage_g_m2": null,
+      "price_inr_per_m2": 72,
+      "price_basis": "demonstration_assumption",
+      "price_source": "PackShift studio demonstration rate. Not a supplier quote.",
+      "price_as_of": "2026-11-22",
+      "conversion_cost_inr": 16,
+      "ect_kn_per_m": null,
+      "compression_n": null,
+      "recycled_content_percent": null,
+      "food_contact_documented": null,
+      "environmental_impact_factor": null
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+env/
+*.pyc
+*.pyo
+*.pyd
+
+# Tooling caches and coverage
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Packaging output
+build/
+dist/
+*.egg-info/
+
+# Local secrets and logs
+.env
+.env.*
+*.log

@@ -71,6 +71,8 @@ export function calculateDesign(project: ParsedProject, material: MaterialOption
       emptySpacePct: existingVolume > 0 ? ((existingVolume - productVolume) / existingVolume) * 100 : 0,
       unitCost: project.existing.unitCost,
       materialLabel: project.existing.material,
+      basis: project.existing.basis,
+      thicknessMm: project.existing.thicknessMm,
       estimatedBlankAreaM2: existingSheet.areaM2,
       blankLength: existingSheet.blankLength,
       blankWidth: existingSheet.blankWidth,
@@ -129,7 +131,10 @@ export function calculateDesign(project: ParsedProject, material: MaterialOption
   if (existing && volumeReductionPct !== null && sheetReductionPct !== null) {
     formulae.push({
       label: 'Volume change',
-      expression: `(${formatLitres(existing.volume)} − ${formatLitres(externalVolume)}) ÷ ${formatLitres(existing.volume)} = ${formatReduction(volumeReductionPct)}`,
+      expression:
+        existing.basis === 'external'
+          ? `(${formatLitres(existing.volume)} − ${formatLitres(externalVolume)}) ÷ ${formatLitres(existing.volume)} = ${formatReduction(volumeReductionPct)}`
+          : 'Not compared. The stated size is not confirmed as the outside size of the current box.',
     })
     formulae.push({
       label: 'Sheet change',
@@ -173,7 +178,7 @@ export function calculateDesign(project: ParsedProject, material: MaterialOption
     'Sheet area is blank length times blank width. The drawn slots sit inside that sheet.',
     `Board price ${formatMoney(material.pricePerM2)} per m², conversion ${formatMoney(material.conversion)} per unit, and insert ${formatMoney(insertCost)} are assumptions, not quotes.`,
     existing
-      ? 'Existing volume uses the stated size as entered. Existing sheet area runs those dimensions through the same RSC formula.'
+      ? 'Existing volume uses the stated size as entered. Existing sheet area runs those dimensions through the same RSC formula. That sheet figure is not a blank for plastic or other non-carton packs, and the volume-change line is an outer-volume reduction only when the stated size is the outer size.'
       : 'No existing pack was entered, so there is no volume or cost comparison.',
     'Strength, transit protection, recycled-content claims, and carbon figures are outside this calculation.',
   ]

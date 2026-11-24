@@ -1,9 +1,10 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { calculateDesign } from '../lib/calculations.ts'
 import { EXAMPLE_FORM, EXAMPLE_MODE } from '../lib/example.ts'
 import { cloneMaterials } from '../lib/materials.ts'
 import { parseForm, type FieldErrors } from '../lib/validation.ts'
 import { generateDesign } from '../services/designService.ts'
+import { fetchOptimisation, optimiseRequest, type OptimisePreference, type OptimiseResult } from '../services/optimiseService.ts'
 import type { MaterialId, MaterialOption, Mode, PackagingDesign, ProductForm } from '../types/packaging.ts'
 
 type Status = 'ready' | 'loading' | 'error'
@@ -23,6 +24,11 @@ interface DesignContextValue {
   liveDesign: PackagingDesign | null
   committedDesign: PackagingDesign | null
   comparisons: PackagingDesign[]
+  optimisePreference: OptimisePreference
+  optimiseResult: OptimiseResult | null
+  optimiseError: string | null
+  optimiseLoading: boolean
+  setOptimisePreference: (preference: OptimisePreference) => void
   setMode: (mode: Mode) => void
   setField: (key: keyof ProductForm, value: string) => void
   selectMaterial: (id: MaterialId) => void
@@ -55,6 +61,10 @@ export function DesignProvider({ children }: { children: ReactNode }) {
   const [showErrors, setShowErrors] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [generatedAt, setGeneratedAt] = useState(() => new Date().toISOString())
+  const [optimisePreference, setOptimisePreference] = useState<OptimisePreference>('balanced')
+  const [optimiseResult, setOptimiseResult] = useState<OptimiseResult | null>(null)
+  const [optimiseError, setOptimiseError] = useState<string | null>(null)
+  const [optimiseLoading, setOptimiseLoading] = useState(false)
   const requestId = useRef(0)
   const committedRef = useRef(committedForm)
   const committedModeRef = useRef(committedMode)
@@ -89,6 +99,10 @@ export function DesignProvider({ children }: { children: ReactNode }) {
 
   const setField = useCallback((key: keyof ProductForm, value: string) => {
     setForm((current) => ({ ...current, [key]: value }) as ProductForm)
+    if (key === 'quantity' || key === 'existingUnitCost' || key === 'existingMaterial') {
+      const next = { ...committedRef.current, [key]: value }
+      if (parseForm(next, committedModeRef.current).ok) setCommittedForm(next)
+    }
   }, [])
 
   const updateMaterial = useCallback(
@@ -189,6 +203,64 @@ export function DesignProvider({ children }: { children: ReactNode }) {
     }
   }, [form, mode, selectedMaterial])
 
+  const optimiseKey = useMemo(() => {
+    if (!committedDesign) return ''
+    const body = optimiseRequest(committedDesign, optimisePreference)
+    return body ? JSON.stringify(body) : ''
+  }, [committedDesign, optimisePreference])
+  const geometryKey = useMemo(() => {
+    if (!optimiseKey) return ''
+    const body = JSON.parse(optimiseKey) as {
+      quantity?: number
+      preference?: string
+      current_packaging?: { cost_per_unit_inr?: number }
+    }
+    const pack = body.current_packaging
+    return JSON.stringify({
+      product: (body as { product?: unknown }).product,
+      current_packaging: pack
+        ? { dimensions_mm: (pack as { dimensions_mm?: unknown }).dimensions_mm, dimension_type: (pack as { dimension_type?: unknown }).dimension_type, board_thickness_mm: (pack as { board_thickness_mm?: unknown }).board_thickness_mm, material_name: (pack as { material_name?: unknown }).material_name }
+        : null,
+    })
+  }, [optimiseKey])
+  const geometryRef = useRef('')
+  const optimiseRequestId = useRef(0)
+  const committedDesignRef = useRef(committedDesign)
+  committedDesignRef.current = committedDesign
+
+  useEffect(() => {
+    const design = committedDesignRef.current
+    if (!optimiseKey || !design) {
+      geometryRef.current = ''
+      setOptimiseResult(null)
+      setOptimiseError(null)
+      setOptimiseLoading(false)
+      return
+    }
+    if (geometryRef.current !== geometryKey) {
+      geometryRef.current = geometryKey
+      setOptimiseResult(null)
+    }
+    const id = optimiseRequestId.current + 1
+    optimiseRequestId.current = id
+    setOptimiseLoading(true)
+    setOptimiseError(null)
+    fetchOptimisation(design, optimisePreference)
+      .then((body) => {
+        if (id !== optimiseRequestId.current) return
+        setOptimiseResult(body)
+        setOptimiseError(null)
+      })
+      .catch((caught: unknown) => {
+        if (id !== optimiseRequestId.current) return
+        setOptimiseResult(null)
+        setOptimiseError(caught instanceof Error ? caught.message : 'The optimisation service is unavailable.')
+      })
+      .finally(() => {
+        if (id === optimiseRequestId.current) setOptimiseLoading(false)
+      })
+  }, [optimiseKey, geometryKey, optimisePreference])
+
   const value = useMemo<DesignContextValue>(
     () => ({
       mode,
@@ -204,6 +276,11 @@ export function DesignProvider({ children }: { children: ReactNode }) {
       liveDesign,
       committedDesign,
       comparisons,
+      optimisePreference,
+      optimiseResult,
+      optimiseError,
+      optimiseLoading,
+      setOptimisePreference,
       setMode,
       setField,
       selectMaterial: setSelectedMaterialId,
@@ -228,6 +305,10 @@ export function DesignProvider({ children }: { children: ReactNode }) {
       liveDesign,
       committedDesign,
       comparisons,
+      optimisePreference,
+      optimiseResult,
+      optimiseError,
+      optimiseLoading,
       setField,
       updateMaterial,
       updateCommittedFields,

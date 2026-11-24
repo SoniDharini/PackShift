@@ -41,7 +41,13 @@ export function BeforeAfter({ design }: { design: PackagingDesign }) {
           <h2 className="font-display text-xl font-semibold">Before and after</h2>
           <p className="mt-1 text-sm text-secondary">Same scale. Grey is the stated pack. The kraft carton is the proposal.</p>
         </div>
-        <p className="text-sm font-semibold text-emerald-deep">{formatReduction(design.volumeReductionPct)}</p>
+        <p className="text-sm font-semibold text-emerald-deep">
+          {design.existing?.basis === 'external'
+            ? design.volumeReductionPct !== null && Math.abs(design.volumeReductionPct) <= 0.05
+              ? 'Same outer volume'
+              : formatReduction(design.volumeReductionPct)
+            : 'Outer volume not confirmed'}
+        </p>
       </div>
       <svg viewBox={bounds.viewBox} role="img" aria-label="Existing and proposed cartons drawn to the same scale" className="mt-4 h-auto w-full">
         {[before, after].map((model) =>

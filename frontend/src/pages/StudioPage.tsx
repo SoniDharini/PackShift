@@ -17,7 +17,7 @@ export function StudioPage() {
   }, [])
 
   return (
-    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-cream">
+    <div className="relative flex h-dvh min-h-0 flex-col overflow-hidden bg-cream">
       <WorkspaceHeader />
       <div className="grid grid-cols-3 border-b border-line bg-white xl:hidden" role="tablist" aria-label="Studio panels">
         {(

@@ -1,9 +1,13 @@
+import { describeEvaluation } from '../../lib/evaluationCopy.ts'
 import { formatArea, formatDims, formatLitres, formatMoney, formatPct } from '../../lib/format.ts'
 import { cn } from '../../lib/cn.ts'
 import type { PackagingDesign } from '../../types/packaging.ts'
 
 export function ComparisonTable({ designs, selectedId }: { designs: PackagingDesign[]; selectedId: string }) {
   const existing = designs[0]?.existing ?? null
+  const selected = designs.find((design) => design.material.id === selectedId) ?? designs[0]
+  const view = selected ? describeEvaluation(selected, null, false, designs) : null
+  const options = new Map((view?.costOptions ?? []).map((item) => [item.id, item]))
   const rows = [
     {
       label: 'Outer size',
@@ -12,17 +16,23 @@ export function ComparisonTable({ designs, selectedId }: { designs: PackagingDes
     },
     {
       label: 'Volume',
-      existing: existing ? formatLitres(existing.volume) : '—',
+      existing: existing
+        ? existing.basis === 'external'
+          ? `${formatLitres(existing.volume)} outer`
+          : existing.basis === 'internal'
+            ? `${formatLitres(existing.volume)} internal`
+            : `${formatLitres(existing.volume)} stated`
+        : '—',
       cell: (design: PackagingDesign) => formatLitres(design.externalVolume),
     },
     {
       label: 'Unused volume',
-      existing: existing ? formatPct(existing.emptySpacePct) : '—',
+      existing: !existing ? '—' : view?.showExistingUnused ? formatPct(existing.emptySpacePct) : 'Not available',
       cell: (design: PackagingDesign) => formatPct(design.emptySpacePct),
     },
     {
       label: 'Sheet / unit',
-      existing: existing ? formatArea(existing.estimatedBlankAreaM2) : '—',
+      existing: !existing ? '—' : view?.showExistingSheet ? formatArea(existing.estimatedBlankAreaM2) : 'Not applicable',
       cell: (design: PackagingDesign) => formatArea(design.blankAreaM2),
     },
     {
@@ -39,6 +49,37 @@ export function ComparisonTable({ designs, selectedId }: { designs: PackagingDes
       label: 'Order cost',
       existing: existing ? formatMoney(existing.orderCost) : '—',
       cell: (design: PackagingDesign) => formatMoney(design.orderCost),
+    },
+    {
+      label: 'Difference / unit',
+      existing: existing ? 'Baseline' : '—',
+      cell: (design: PackagingDesign) => {
+        const value = options.get(design.material.id)?.perUnitDifference
+        return value == null ? '—' : value === 0 ? 'Same' : `${formatMoney(Math.abs(value))} ${value > 0 ? 'more' : 'less'}`
+      },
+    },
+    {
+      label: 'Order difference',
+      existing: existing ? 'Baseline' : '—',
+      cell: (design: PackagingDesign) => {
+        const value = options.get(design.material.id)?.orderDifference
+        return value == null ? '—' : value === 0 ? 'Same' : `${formatMoney(Math.abs(value))} ${value > 0 ? 'more' : 'less'}`
+      },
+    },
+    {
+      label: 'Fits required size',
+      existing: '—',
+      cell: (design: PackagingDesign) => (options.get(design.material.id)?.fitsRequiredInside ? 'Yes' : 'No'),
+    },
+    {
+      label: 'Protection test',
+      existing: '—',
+      cell: (design: PackagingDesign) => (options.get(design.material.id)?.protectionTested ? 'Tested' : 'Not tested'),
+    },
+    {
+      label: 'Recommendation',
+      existing: '—',
+      cell: (design: PackagingDesign) => options.get(design.material.id)?.recommendation ?? '—',
     },
   ]
 

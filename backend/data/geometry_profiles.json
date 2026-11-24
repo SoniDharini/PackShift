@@ -1,0 +1,20 @@
+{
+  "simplified": {
+    "id": "packshift_simplified",
+    "label": "Studio simplified RSC",
+    "joint_mm": 35,
+    "score_allowance_mm": 0,
+    "score_count": 0,
+    "flap_relief_mm": 0,
+    "scope": "Matches the existing studio. Blank length = joint + 2 × (internal length + internal width). Blank width = internal height + internal width. Each flap is half the internal width. There is no score allowance and no flap gap. This is not a universal factory formula."
+  },
+  "converter": {
+    "id": "demo_score_and_relief",
+    "label": "Demonstration converter allowance",
+    "joint_mm": 35,
+    "score_allowance_mm": 1.5,
+    "score_count": 4,
+    "flap_relief_mm": 3,
+    "scope": "A documented demonstration allowance, not a certified cutting die. It adds 1.5 mm at each of the four boundaries between wall panels, and shortens the pair of flaps by a 3 mm relief so they do not meet. Another converter's scores will differ."
+  }
+}

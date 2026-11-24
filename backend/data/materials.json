@@ -1,0 +1,169 @@
+{
+  "version": "2026-11-22",
+  "price_notice": "Rates in this catalogue are illustrative prototype assumptions for planning. They are not supplier quotations, and they are not environmental-impact factors.",
+  "boards": [
+    {
+      "id": "corrugated_standard",
+      "name": "Standard corrugated board",
+      "category": "corrugated_board",
+      "thickness_mm": 4,
+      "grammage_g_m2": 550,
+      "price_inr_per_m2": 72,
+      "conversion_cost_inr": 16,
+      "price_basis": "illustrative_prototype",
+      "price_source": "PackShift prototype assumption, not a supplier quote",
+      "price_as_of": "2026-11-22",
+      "flute": "C-flute nominal",
+      "limitations": ["Single-wall caliper is nominal. Confirm the sheet with the board supplier."]
+    },
+    {
+      "id": "corrugated_recycled",
+      "name": "Recycled-content corrugated board",
+      "category": "corrugated_board",
+      "thickness_mm": 5,
+      "grammage_g_m2": 480,
+      "price_inr_per_m2": 66,
+      "conversion_cost_inr": 16,
+      "price_basis": "illustrative_prototype",
+      "price_source": "PackShift prototype assumption, not a supplier quote",
+      "price_as_of": "2026-11-22",
+      "flute": "C-flute nominal",
+      "limitations": [
+        "Recycled fibre content is not certified here.",
+        "A lower board price or grammage is not evidence of a lower environmental impact."
+      ]
+    },
+    {
+      "id": "corrugated_unpriced",
+      "name": "Corrugated board with no published rate",
+      "category": "corrugated_board",
+      "thickness_mm": 4,
+      "grammage_g_m2": 550,
+      "price_inr_per_m2": null,
+      "conversion_cost_inr": 16,
+      "price_basis": "unavailable",
+      "price_source": null,
+      "price_as_of": null,
+      "flute": "C-flute nominal",
+      "limitations": ["No board rate is loaded, so a cost comparison must stay unavailable."]
+    }
+  ],
+  "cushioning": [
+    {
+      "id": "none",
+      "name": "No separate insert",
+      "category": "none",
+      "cost_inr_per_package": 0,
+      "mass_g": 0,
+      "price_basis": "illustrative_prototype",
+      "note": "The clearance is an air gap. It is not a tested cushion."
+    },
+    {
+      "id": "foam_insert",
+      "name": "Foam inserts",
+      "category": "polymer_cushion",
+      "cost_inr_per_package": 22,
+      "mass_g": 35,
+      "price_basis": "illustrative_prototype",
+      "note": "Foam is not scored as less suitable, or more suitable, on environmental grounds. No life-cycle dataset is loaded."
+    },
+    {
+      "id": "molded_fiber_insert",
+      "name": "Molded-fiber inserts",
+      "category": "fiber_cushion",
+      "cost_inr_per_package": 28,
+      "mass_g": 40,
+      "price_basis": "illustrative_prototype",
+      "note": "A paper-based insert is not treated as automatically preferable to foam."
+    },
+    {
+      "id": "paper_insert",
+      "name": "Paper-based protective inserts",
+      "category": "fiber_cushion",
+      "cost_inr_per_package": 18,
+      "mass_g": 25,
+      "price_basis": "illustrative_prototype",
+      "note": "Paper construction alone is not a recyclability or biodegradability claim."
+    }
+  ],
+  "configurations": [
+    {
+      "id": "corrugated_standard",
+      "name": "Standard corrugated board",
+      "category": "board_only",
+      "board_id": "corrugated_standard",
+      "cushioning_id": "none",
+      "include_in_recommendations": true,
+      "supported_fragility": ["low", "medium", "high"],
+      "max_product_weight_kg": 30,
+      "clearance_override_mm": null,
+      "supported_box_styles": ["fefco_0201"],
+      "limitations": ["For high fragility the clearance is empty space, not a qualified cushion."]
+    },
+    {
+      "id": "corrugated_recycled",
+      "name": "Recycled-content corrugated board",
+      "category": "board_only",
+      "board_id": "corrugated_recycled",
+      "cushioning_id": "none",
+      "include_in_recommendations": true,
+      "supported_fragility": ["low", "medium", "high"],
+      "max_product_weight_kg": 30,
+      "clearance_override_mm": null,
+      "supported_box_styles": ["fefco_0201"],
+      "limitations": ["Recycled content is an unverified catalogue label. The sheet is assumed 1 mm thicker."]
+    },
+    {
+      "id": "corrugated_foam",
+      "name": "Corrugated board with foam inserts",
+      "category": "board_with_insert",
+      "board_id": "corrugated_standard",
+      "cushioning_id": "foam_insert",
+      "include_in_recommendations": true,
+      "supported_fragility": ["low", "medium", "high"],
+      "max_product_weight_kg": 30,
+      "clearance_override_mm": null,
+      "supported_box_styles": ["fefco_0201"],
+      "limitations": ["The insert is assumed to occupy the configured clearance. That fit is not a drop-test result."]
+    },
+    {
+      "id": "corrugated_molded_fiber",
+      "name": "Corrugated board with molded-fiber inserts",
+      "category": "board_with_insert",
+      "board_id": "corrugated_standard",
+      "cushioning_id": "molded_fiber_insert",
+      "include_in_recommendations": true,
+      "supported_fragility": ["low", "medium", "high"],
+      "max_product_weight_kg": 30,
+      "clearance_override_mm": null,
+      "supported_box_styles": ["fefco_0201"],
+      "limitations": ["Molded fiber is assumed to sit in the same clearance. Protection is not certified."]
+    },
+    {
+      "id": "corrugated_paper_cushion",
+      "name": "Corrugated board with paper-based protective inserts",
+      "category": "board_with_insert",
+      "board_id": "corrugated_standard",
+      "cushioning_id": "paper_insert",
+      "include_in_recommendations": true,
+      "supported_fragility": ["low", "medium", "high"],
+      "max_product_weight_kg": 30,
+      "clearance_override_mm": null,
+      "supported_box_styles": ["fefco_0201"],
+      "limitations": ["Paper inserts are not labelled more sustainable than foam. Only area, mass, volume and cost are compared."]
+    },
+    {
+      "id": "corrugated_rate_unknown",
+      "name": "Corrugated board awaiting a material rate",
+      "category": "board_only",
+      "board_id": "corrugated_unpriced",
+      "cushioning_id": "none",
+      "include_in_recommendations": false,
+      "supported_fragility": ["low", "medium", "high"],
+      "max_product_weight_kg": 30,
+      "clearance_override_mm": null,
+      "supported_box_styles": ["fefco_0201"],
+      "limitations": ["Kept out of the default shortlist because the board rate is missing. Geometry can still be calculated."]
+    }
+  ]
+}

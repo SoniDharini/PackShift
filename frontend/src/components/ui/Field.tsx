@@ -104,6 +104,7 @@ export function Segmented<T extends string>({
   onChange,
   options,
   columns = 2,
+  error,
 }: {
   label: string
   name: string
@@ -111,21 +112,29 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void
   options: { value: T; label: ReactNode }[]
   columns?: 2 | 3
+  error?: string
 }) {
-  return (
+  const errorId = `${name}-error`
+  const group = (
     <div
       role="radiogroup"
       aria-label={label}
-      className={cn('grid gap-1 rounded-xl bg-cream p-1', columns === 3 ? 'grid-cols-3' : 'grid-cols-2')}
+      className={cn(
+        'grid gap-1 rounded-xl bg-cream p-1',
+        columns === 3 ? 'grid-cols-3' : 'grid-cols-2',
+        error && 'ring-1 ring-danger',
+      )}
     >
-      {options.map((option) => (
-        <label key={option.value} className="min-w-0 cursor-pointer">
+      {options.map((option, index) => (
+        <label key={option.value} className="relative min-w-0 cursor-pointer">
           <input
             className="peer sr-only"
             type="radio"
             name={name}
             value={option.value}
             checked={value === option.value}
+            aria-invalid={error && index === 0 ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
             onChange={() => onChange(option.value)}
           />
           <span className="flex min-h-10 items-center justify-center rounded-lg px-2 py-2 text-center text-xs font-semibold leading-4 text-secondary peer-checked:bg-white peer-checked:text-forest peer-checked:shadow-sm peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-emerald-deep">
@@ -133,6 +142,15 @@ export function Segmented<T extends string>({
           </span>
         </label>
       ))}
+    </div>
+  )
+  if (!error) return group
+  return (
+    <div>
+      {group}
+      <span id={errorId} className="mt-1 block text-xs text-danger">
+        {error}
+      </span>
     </div>
   )
 }

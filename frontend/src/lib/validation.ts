@@ -1,3 +1,4 @@
+import { isCorrugatedBoard } from './packMaterial.ts'
 import type { Fragility, Mode, ParsedProject, ProductForm } from '../types/packaging.ts'
 import { CATEGORIES } from '../types/packaging.ts'
 
@@ -59,9 +60,10 @@ export function parseForm(form: ProductForm, mode: Mode): ParseResult {
 
   let existing: ParsedProject['existing'] = null
   if (mode === 'redesign') {
-    const existingLength = readNumber(form.existingLength, 'the stated length in mm', 1, 2500)
-    const existingWidth = readNumber(form.existingWidth, 'the stated width in mm', 1, 2500)
-    const existingHeight = readNumber(form.existingHeight, 'the stated height in mm', 1, 2500)
+    const side = form.existingBasis === 'internal' ? 'inside' : form.existingBasis === 'external' ? 'outside' : 'box'
+    const existingLength = readNumber(form.existingLength, `the ${side} length in mm`, 1, 2500)
+    const existingWidth = readNumber(form.existingWidth, `the ${side} width in mm`, 1, 2500)
+    const existingHeight = readNumber(form.existingHeight, `the ${side} height in mm`, 1, 2500)
     const existingUnitCost = readNumber(form.existingUnitCost, 'the stated unit cost', 0, 100000, { allowZero: true })
     const material = form.existingMaterial.trim().replace(/\s+/g, ' ')
     if ('error' in existingLength) errors.existingLength = existingLength.error
@@ -70,12 +72,37 @@ export function parseForm(form: ProductForm, mode: Mode): ParseResult {
     if ('error' in existingUnitCost) errors.existingUnitCost = existingUnitCost.error
     if (!material) errors.existingMaterial = 'Name the current material.'
     else if (material.length > 80) errors.existingMaterial = 'Keep the material name under 80 characters.'
+    const basis = form.existingBasis
+    const corrugated = isCorrugatedBoard(material)
+    if (basis !== 'internal' && basis !== 'external') {
+      errors.existingBasis = 'Choose Outside dimensions or Inside dimensions so the current box can be checked.'
+    } else if (basis === 'external' && material && !corrugated) {
+      errors.existingBasis = `PackShift can only work out the inside space from outside measurements for corrugated board. For ${material}, choose Inside dimensions and measure the space where the product sits.`
+    }
+    let thicknessMm: number | null = null
+    if (basis === 'external' && corrugated && !form.existingThickness.trim()) {
+      errors.existingThickness = 'Enter the wall thickness of your current box. It is needed to work out the inside space from the outside size.'
+    } else if (corrugated && (basis === 'external' || basis === 'internal') && form.existingThickness.trim()) {
+      const thickness = readNumber(form.existingThickness, 'a wall thickness in mm', 0.2, 15)
+      if ('error' in thickness) errors.existingThickness = thickness.error
+      else if (
+        basis === 'external' &&
+        !('error' in existingLength) &&
+        !('error' in existingWidth) &&
+        !('error' in existingHeight) &&
+        2 * thickness.value >= Math.min(existingLength.value, existingWidth.value, existingHeight.value)
+      ) {
+        errors.existingThickness = 'Two walls of this thickness would leave no space inside. Check the thickness or the outside measurements.'
+      } else thicknessMm = thickness.value
+    }
 
     if (
       !('error' in existingLength) &&
       !('error' in existingWidth) &&
       !('error' in existingHeight) &&
       !('error' in existingUnitCost) &&
+      !errors.existingBasis &&
+      !errors.existingThickness &&
       material &&
       material.length <= 80
     ) {
@@ -85,6 +112,8 @@ export function parseForm(form: ProductForm, mode: Mode): ParseResult {
         height: existingHeight.value,
         material,
         unitCost: existingUnitCost.value,
+        basis,
+        thicknessMm,
       }
     }
   }

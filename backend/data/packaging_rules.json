@@ -1,0 +1,46 @@
+{
+  "version": "2026-11-22",
+  "description": "Prototype rules for PackShift redesign. Clearances are planning assumptions, not a certified protective-packaging standard.",
+  "clearance_by_fragility_mm": {
+    "low": {
+      "length": 5,
+      "width": 5,
+      "height": 5,
+      "rule_id": "prototype_low_fragility_5mm"
+    },
+    "medium": {
+      "length": 15,
+      "width": 15,
+      "height": 15,
+      "rule_id": "prototype_medium_fragility_15mm"
+    },
+    "high": {
+      "length": 30,
+      "width": 30,
+      "height": 30,
+      "rule_id": "prototype_high_fragility_30mm"
+    }
+  },
+  "default_dimension_increment_mm": 5,
+  "joint_allowance_mm": 35,
+  "joint_allowance_note": "The manufacturer's joint is a fixed 35 mm prototype allowance. It is not a plant-specific glue-flap specification.",
+  "manufacturing_waste_factor": 0.0,
+  "manufacturing_waste_note": "Unit cost uses the rectangular blank. No extra scrap percentage is applied. Slot notches are cut from inside that rectangle and do not enlarge it.",
+  "supported_box_styles": ["fefco_0201"],
+  "supported_shapes": ["rectangular"],
+  "supported_items_per_package": [1],
+  "limits": {
+    "max_dimension_mm": 3000,
+    "max_weight_kg": 200,
+    "max_cost_inr": 10000000,
+    "max_monthly_quantity": 1000000,
+    "max_increment_mm": 50,
+    "min_increment_mm": 1,
+    "max_board_thickness_mm": 15,
+    "max_name_length": 160
+  },
+  "external_dimension_policy": "Internal size is the external size minus twice the board thickness on every axis. Thickness comes from current_packaging.board_thickness_mm when it is sent, otherwise from the catalogue thickness of current_packaging.material_id. The request is rejected when neither value exists.",
+  "currency": "INR",
+  "currency_decimals": 2,
+  "orientation_policy": "The declared length, width and height are kept when that pose is allowed. Other permitted poses are reported and are not selected only to reduce package volume."
+}

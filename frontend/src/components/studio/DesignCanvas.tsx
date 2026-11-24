@@ -15,7 +15,8 @@ import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState, type React
 import { buildDieline } from '../../lib/dieline.ts'
 import { buildDimensions } from '../../lib/drawings.ts'
 import { downloadSvg, type VectorDrawing } from '../../lib/svg.ts'
-import { formatDims, slugify } from '../../lib/format.ts'
+import { formatDims, formatNumber, slugify } from '../../lib/format.ts'
+import { centredPlacement, statedPackTooSmall } from '../../lib/sceneLayout.ts'
 import { cn } from '../../lib/cn.ts'
 import { useDesign } from '../../state/DesignContext.tsx'
 import type { PackagingDesign } from '../../types/packaging.ts'
@@ -27,7 +28,7 @@ type Sheet = '3d' | 'dieline' | 'dimensions'
 
 function VectorStage({ drawing, zoom }: { drawing: VectorDrawing; zoom: number }) {
   return (
-    <div className="h-full overflow-auto">
+    <div className="relative h-full overflow-auto">
       <svg
         viewBox={drawing.viewBox}
         role="img"
@@ -55,6 +56,7 @@ export function DesignCanvas() {
   const frameRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<PackagingSceneHandle>(null)
   const rawId = useId().replace(/:/g, '')
+  const placement = shown ? centredPlacement(shown.product, shown.internal, shown.external) : null
   const dieline = useMemo(() => (shown ? buildDieline(shown, `${rawId}d`) : null), [shown, rawId])
   const dimensions = useMemo(() => (shown ? buildDimensions(shown, `${rawId}m`) : null), [shown, rawId])
 
@@ -125,18 +127,25 @@ export function DesignCanvas() {
         </div>
         {sheet === '3d' ? (
           <div className="flex rounded-lg bg-cream p-1" role="group" aria-label="Camera">
-            {(['iso', 'front', 'top', 'side'] as const).map((view) => (
+            {(
+              [
+                ['iso', 'Isometric'],
+                ['front', 'Front'],
+                ['top', 'Aerial'],
+                ['side', 'Side'],
+              ] as const
+            ).map(([view, label]) => (
               <button
                 key={view}
                 type="button"
                 aria-pressed={cameraView === view}
                 onClick={() => chooseView(view)}
                 className={cn(
-                  'h-8 rounded-md px-2.5 text-xs font-semibold capitalize',
+                  'h-8 rounded-md px-2.5 text-xs font-semibold',
                   cameraView === view ? 'bg-white text-forest shadow-sm' : 'text-secondary hover:text-forest',
                 )}
               >
-                {view === 'iso' ? 'Iso' : view}
+                {label}
               </button>
             ))}
           </div>
@@ -147,7 +156,7 @@ export function DesignCanvas() {
               {(
                 [
                   ['solid', 'Solid'],
-                  ['ghost', 'Ghost'],
+                  ['ghost', 'Ghosted'],
                   ['wire', 'Wire'],
                 ] as const
               ).map(([id, label]) => (
@@ -206,7 +215,7 @@ export function DesignCanvas() {
           </button>
         </div>
       </div>
-      <div className={cn('relative min-h-0 flex-1', sheet === '3d' ? 'technical-grid' : 'bg-[#F7F8F4]')}>
+      <div className={cn('relative min-h-0 flex-1 overflow-hidden', sheet === '3d' ? 'technical-grid' : 'bg-[#F7F8F4]')}>
         <span className="pointer-events-none absolute left-3 top-3 z-10 h-4 w-4 border-l border-t border-forest/25" />
         <span className="pointer-events-none absolute right-3 top-3 z-10 h-4 w-4 border-r border-t border-forest/25" />
         <span className="pointer-events-none absolute bottom-3 left-3 z-10 h-4 w-4 border-b border-l border-forest/25" />
@@ -214,7 +223,15 @@ export function DesignCanvas() {
         {shown && sheet === '3d' ? (
           <div className="pointer-events-none absolute left-5 top-5 z-10 hidden max-w-[16rem] sm:block">
             <p className="font-display text-sm font-semibold">{shown.productName}</p>
+            <p className="text-xs text-secondary">Product {formatDims(shown.product)}</p>
+            <p className="text-xs text-secondary">Internal {formatDims(shown.internal)}</p>
             <p className="text-xs text-secondary">Outer {formatDims(shown.external)}</p>
+            <p className="text-xs text-secondary">
+              Clearance {placement ? `${formatNumber(placement.clearanceMm.l)} / ${formatNumber(placement.clearanceMm.w)} / ${formatNumber(placement.clearanceMm.h)} mm` : ''}, product centered
+            </p>
+            {shown.existing && statedPackTooSmall(shown.product, shown.existing.size) ? (
+              <p className="mt-1 text-xs text-danger">The stated pack is smaller than the product. The product is not scaled down.</p>
+            ) : null}
             {isDirty && liveDesign ? <p className="mt-1 text-xs text-secondary">Uncommitted preview</p> : null}
             {!liveDesign ? <p className="mt-1 text-xs text-danger">Preview paused until the measurements are valid.</p> : null}
           </div>

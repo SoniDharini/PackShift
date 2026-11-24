@@ -1,10 +1,11 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Edges, Html, OrbitControls } from '@react-three/drei'
-import { Component, Suspense, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from 'react'
+import { Edges, OrbitControls } from '@react-three/drei'
+import { Component, Suspense, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref, type RefObject } from 'react'
 import * as THREE from 'three'
 import { FittedIso } from '../visual/IsoBox.tsx'
 import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion.ts'
-import { formatMm } from '../../lib/format.ts'
+import { formatMm, formatNumber } from '../../lib/format.ts'
+import { centredPlacement, statedPackTooSmall } from '../../lib/sceneLayout.ts'
 import type { PackagingDesign, TextureKind } from '../../types/packaging.ts'
 
 export type ShadeMode = 'solid' | 'ghost' | 'wire'
@@ -80,19 +81,20 @@ function useKraftTexture(kind: TextureKind) {
   return texture
 }
 
-function frameCamera(view: CameraView, fitMm: number, focusY: number) {
-  const radius = (fitMm / 100) * 3.35 + 2
+function frameCamera(view: CameraView, fitMm: number, focusY: number, viewportHeight = 640, ortho = false) {
+  const radius = (fitMm / 100) * (ortho ? 2.4 : 3.35) + (ortho ? 0.6 : 2)
   const target = new THREE.Vector3(0, focusY, 0)
   const direction = {
     iso: new THREE.Vector3(0.82, 0.56, 0.9),
-    front: new THREE.Vector3(0, 0.14, 1),
-    top: new THREE.Vector3(0.04, 1, 0.16),
-    side: new THREE.Vector3(1, 0.14, 0),
+    front: new THREE.Vector3(0, 0.08, 1),
+    top: new THREE.Vector3(0, 1, 0.001),
+    side: new THREE.Vector3(1, 0.08, 0),
   }[view]
     .clone()
     .normalize()
     .multiplyScalar(radius)
-  return { position: target.clone().add(direction), target }
+  const zoom = ortho ? (viewportHeight * 0.62) / Math.max(fitMm / 100, 0.2) : undefined
+  return { position: target.clone().add(direction), target, zoom }
 }
 
 function aim(mesh: THREE.Mesh, from: THREE.Vector3, to: THREE.Vector3, tmp: THREE.Vector3, yAxis: THREE.Vector3) {
@@ -102,6 +104,45 @@ function aim(mesh: THREE.Mesh, from: THREE.Vector3, to: THREE.Vector3, tmp: THRE
   mesh.scale.set(0.006, length, 0.006)
   tmp.multiplyScalar(1 / length)
   mesh.quaternion.setFromUnitVectors(yAxis, tmp)
+}
+
+const labelPoint = new THREE.Vector3()
+
+function DimensionLabel({ anchor, text }: { anchor: RefObject<THREE.Group | null>; text: string }) {
+  const { camera, gl, size } = useThree()
+  const el = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const parent = gl.domElement.parentElement
+    if (!parent) return
+    const node = document.createElement('div')
+    node.textContent = text
+    node.className =
+      'pointer-events-none z-20 whitespace-nowrap rounded-full border border-line bg-white px-2 py-1 text-[11px] font-medium text-forest shadow-sm'
+    node.style.position = 'absolute'
+    node.style.left = '0'
+    node.style.top = '0'
+    parent.appendChild(node)
+    el.current = node
+    return () => {
+      node.remove()
+      el.current = null
+    }
+  }, [gl, text])
+
+  useFrame(() => {
+    const node = el.current
+    const group = anchor.current
+    if (!node || !group) return
+    const vector = group.getWorldPosition(labelPoint)
+    vector.project(camera)
+    const x = (vector.x * 0.5 + 0.5) * size.width
+    const y = (-vector.y * 0.5 + 0.5) * size.height
+    node.style.display = vector.z > 1 ? 'none' : 'block'
+    node.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`
+  })
+
+  return null
 }
 
 function Carton({
@@ -116,164 +157,117 @@ function Carton({
   reduced: boolean
 }) {
   const texture = useKraftTexture(design.material.texture)
-  const material = useMemo(() => new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, side: THREE.DoubleSide }), [])
-  const bottom = useRef<THREE.Mesh>(null)
-  const front = useRef<THREE.Mesh>(null)
-  const back = useRef<THREE.Mesh>(null)
-  const left = useRef<THREE.Mesh>(null)
-  const right = useRef<THREE.Mesh>(null)
-  const frontHinge = useRef<THREE.Group>(null)
-  const backHinge = useRef<THREE.Group>(null)
-  const leftHinge = useRef<THREE.Group>(null)
-  const rightHinge = useRef<THREE.Group>(null)
-  const frontFlap = useRef<THREE.Mesh>(null)
-  const backFlap = useRef<THREE.Mesh>(null)
-  const leftFlap = useRef<THREE.Mesh>(null)
-  const rightFlap = useRef<THREE.Mesh>(null)
-  const productRef = useRef<THREE.Group>(null)
+  const shell = useMemo(() => new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0 }), [])
+  const productMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#6E7C8A', roughness: 0.62 }), [])
+  const outer = useRef<THREE.Mesh>(null)
+  const cavity = useRef<THREE.LineSegments>(null)
+  const product = useRef<THREE.Mesh>(null)
   const lengthShaft = useRef<THREE.Mesh>(null)
   const widthShaft = useRef<THREE.Mesh>(null)
   const heightShaft = useRef<THREE.Mesh>(null)
   const lengthLabel = useRef<THREE.Group>(null)
   const widthLabel = useRef<THREE.Group>(null)
   const heightLabel = useRef<THREE.Group>(null)
+  const edges = useMemo(() => new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), [])
   const fromV = useMemo(() => new THREE.Vector3(), [])
   const toV = useMemo(() => new THREE.Vector3(), [])
   const tmp = useMemo(() => new THREE.Vector3(), [])
   const yAxis = useMemo(() => new THREE.Vector3(0, 1, 0), [])
-  const target = {
-    L: design.external.l / 100,
-    W: design.external.w / 100,
-    H: design.external.h / 100,
-    t: Math.max(design.thickness / 100, 0.012),
-  }
-  const cur = useRef(target)
+  const layout = centredPlacement(design.product, design.internal, design.external)
+  const cur = useRef({
+    x: layout.external.x,
+    y: layout.external.y,
+    z: layout.external.z,
+    ix: layout.internal.x,
+    iy: layout.internal.y,
+    iz: layout.internal.z,
+    px: layout.product.x,
+    py: layout.product.y,
+    pz: layout.product.z,
+    cy: layout.productCenterY,
+    iy0: layout.internalCenterY,
+  })
 
-  useEffect(() => () => material.dispose(), [material])
+  useEffect(() => () => {
+    shell.dispose()
+    productMaterial.dispose()
+    edges.dispose()
+  }, [edges, productMaterial, shell])
 
   useEffect(() => {
+    const ghost = shade === 'ghost'
     const wire = shade === 'wire'
-    material.wireframe = wire
-    material.map = wire ? null : texture
-    material.color.set(wire ? '#146E54' : texture ? '#ffffff' : '#C6A36E')
-    material.transparent = shade === 'ghost'
-    material.opacity = shade === 'ghost' ? 0.42 : 1
-    material.depthWrite = shade !== 'ghost'
-    material.needsUpdate = true
-  }, [material, shade, texture])
+    shell.wireframe = wire
+    shell.map = wire ? null : texture
+    shell.color.set(wire ? '#146E54' : texture ? '#ffffff' : '#C6A36E')
+    shell.transparent = ghost
+    shell.opacity = ghost ? 0.28 : 1
+    shell.depthWrite = !ghost
+    shell.polygonOffset = ghost
+    shell.polygonOffsetFactor = ghost ? 1 : 0
+    shell.side = ghost ? THREE.FrontSide : THREE.FrontSide
+    shell.needsUpdate = true
+    const statedClash = design.existing ? statedPackTooSmall(design.product, design.existing.size) : false
+    productMaterial.color.set(layout.fits && !statedClash ? '#6E7C8A' : '#9C3B2E')
+    productMaterial.depthWrite = true
+    productMaterial.transparent = false
+  }, [design.existing, design.product, layout.fits, productMaterial, shade, shell, texture])
 
   useFrame((_, delta) => {
     const step = Math.min(delta, 0.05)
     const next = cur.current
     const lambda = reduced ? 40 : 7
-    next.L = THREE.MathUtils.damp(next.L, design.external.l / 100, lambda, step)
-    next.W = THREE.MathUtils.damp(next.W, design.external.w / 100, lambda, step)
-    next.H = THREE.MathUtils.damp(next.H, design.external.h / 100, lambda, step)
-    next.t = THREE.MathUtils.damp(next.t, Math.max(design.thickness / 100, 0.012), lambda, step)
-
-    const { L, W, H } = next
-    const t = Math.min(next.t, L / 3, W / 3, H / 2.2)
-    const wallH = Math.max(H - t, 0.02)
-    const sideSpan = Math.max(W - 2 * t, 0.02)
-    const flapDepth = Math.max((W - 2 * t) / 2, 0.03)
-    const majorW = Math.max(L - 2 * t - 0.04, 0.04)
-    const minorW = Math.max(sideSpan - 0.05, 0.04)
-    const yWall = t + wallH / 2
-
-    const place = (mesh: THREE.Mesh | null, x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
-      if (!mesh) return
-      mesh.position.set(x, y, z)
-      mesh.scale.set(Math.max(sx, 0.001), Math.max(sy, 0.001), Math.max(sz, 0.001))
-    }
-    place(bottom.current, 0, t / 2, 0, L, t, W)
-    place(front.current, 0, yWall, W / 2 - t / 2, L, wallH, t)
-    place(back.current, 0, yWall, -(W / 2 - t / 2), L, wallH, t)
-    place(left.current, -(L / 2 - t / 2), yWall, 0, t, wallH, sideSpan)
-    place(right.current, L / 2 - t / 2, yWall, 0, t, wallH, sideSpan)
-
-    const angle = 0.78
-    if (frontHinge.current) {
-      frontHinge.current.position.set(0, H, W / 2 - t / 2)
-      frontHinge.current.rotation.set(-angle, 0, 0)
-    }
-    if (backHinge.current) {
-      backHinge.current.position.set(0, H, -(W / 2 - t / 2))
-      backHinge.current.rotation.set(angle, 0, 0)
-    }
-    if (leftHinge.current) {
-      leftHinge.current.position.set(-(L / 2 - t / 2), H, 0)
-      leftHinge.current.rotation.set(0, 0, -angle)
-    }
-    if (rightHinge.current) {
-      rightHinge.current.position.set(L / 2 - t / 2, H, 0)
-      rightHinge.current.rotation.set(0, 0, angle)
-    }
-    place(frontFlap.current, 0, 0, flapDepth / 2, majorW, t, flapDepth)
-    place(backFlap.current, 0, 0, -flapDepth / 2, majorW, t, flapDepth)
-    place(leftFlap.current, -flapDepth / 2, 0, 0, flapDepth, t, minorW)
-    place(rightFlap.current, flapDepth / 2, 0, 0, flapDepth, t, minorW)
-
-    const productH = design.product.h / 100
-    if (productRef.current) productRef.current.position.set(0, t + productH / 2, 0)
-
+    const place = centredPlacement(design.product, design.internal, design.external)
+    const damp = (value: number, target: number) => THREE.MathUtils.damp(value, target, lambda, step)
+    next.x = damp(next.x, place.external.x)
+    next.y = damp(next.y, place.external.y)
+    next.z = damp(next.z, place.external.z)
+    next.ix = damp(next.ix, place.internal.x)
+    next.iy = damp(next.iy, place.internal.y)
+    next.iz = damp(next.iz, place.internal.z)
+    next.px = damp(next.px, place.product.x)
+    next.py = damp(next.py, place.product.y)
+    next.pz = damp(next.pz, place.product.z)
+    next.cy = damp(next.cy, place.productCenterY)
+    next.iy0 = damp(next.iy0, place.internalCenterY)
+    outer.current?.scale.set(next.x, next.y, next.z)
+    outer.current?.position.set(0, next.y / 2, 0)
+    cavity.current?.scale.set(next.ix, next.iy, next.iz)
+    cavity.current?.position.set(0, next.iy0, 0)
+    cavity.current?.computeLineDistances()
+    product.current?.scale.set(next.px, next.py, next.pz)
+    product.current?.position.set(0, next.cy, 0)
     if (showDimensions && lengthShaft.current && widthShaft.current && heightShaft.current) {
-      fromV.set(-L / 2, -0.14, W / 2 + 0.22)
-      toV.set(L / 2, -0.14, W / 2 + 0.22)
+      fromV.set(-next.x / 2, -0.14, next.z / 2 + 0.22)
+      toV.set(next.x / 2, -0.14, next.z / 2 + 0.22)
       aim(lengthShaft.current, fromV, toV, tmp, yAxis)
-      fromV.set(L / 2 + 0.22, -0.14, -W / 2)
-      toV.set(L / 2 + 0.22, -0.14, W / 2)
+      fromV.set(next.x / 2 + 0.22, -0.14, -next.z / 2)
+      toV.set(next.x / 2 + 0.22, -0.14, next.z / 2)
       aim(widthShaft.current, fromV, toV, tmp, yAxis)
-      fromV.set(-L / 2 - 0.22, 0, W / 2 + 0.16)
-      toV.set(-L / 2 - 0.22, H, W / 2 + 0.16)
+      fromV.set(-next.x / 2 - 0.22, 0, next.z / 2 + 0.16)
+      toV.set(-next.x / 2 - 0.22, next.y, next.z / 2 + 0.16)
       aim(heightShaft.current, fromV, toV, tmp, yAxis)
-      lengthLabel.current?.position.set(0, 0.02, W / 2 + 0.22)
-      widthLabel.current?.position.set(L / 2 + 0.22, 0.02, 0)
-      heightLabel.current?.position.set(-L / 2 - 0.22, H / 2, W / 2 + 0.16)
+      lengthLabel.current?.position.set(0, 0.02, next.z / 2 + 0.22)
+      widthLabel.current?.position.set(next.x / 2 + 0.22, 0.02, 0)
+      heightLabel.current?.position.set(-next.x / 2 - 0.22, next.y / 2, next.z / 2 + 0.16)
     }
   })
 
-  const productL = design.product.l / 100
-  const productW = design.product.w / 100
-  const productH = design.product.h / 100
-  const radius = (productW / 2) * 0.92
-  const mugShift = -productL / 2 + radius
-
-  const panel = (ref: Ref<THREE.Mesh>) => (
-    <mesh ref={ref} material={material} castShadow={false} receiveShadow={false}>
-      <boxGeometry args={[1, 1, 1]} />
-    </mesh>
-  )
+  const showCavity = shade !== 'solid'
 
   return (
     <group>
-      {panel(bottom)}
-      {panel(front)}
-      {panel(back)}
-      {panel(left)}
-      {panel(right)}
-      <group ref={frontHinge}>{panel(frontFlap)}</group>
-      <group ref={backHinge}>{panel(backFlap)}</group>
-      <group ref={leftHinge}>{panel(leftFlap)}</group>
-      <group ref={rightHinge}>{panel(rightFlap)}</group>
-      <group ref={productRef}>
-        {design.category === 'Drinkware' ? (
-          <group position={[mugShift, 0, 0]}>
-            <mesh>
-              <cylinderGeometry args={[radius, radius * 0.94, productH, 40]} />
-              <meshStandardMaterial color="#F4F1EA" roughness={0.32} metalness={0.02} />
-            </mesh>
-            <mesh position={[radius * 0.62, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
-              <torusGeometry args={[productH * 0.16, Math.min(0.035, radius * 0.18), 12, 24, Math.PI]} />
-              <meshStandardMaterial color="#F4F1EA" roughness={0.32} />
-            </mesh>
-          </group>
-        ) : (
-          <mesh>
-            <boxGeometry args={[productL, productH, productW]} />
-            <meshStandardMaterial color="#E5DDD2" roughness={0.64} />
-          </mesh>
-        )}
-      </group>
+      <mesh ref={outer} material={shell} renderOrder={shade === 'ghost' ? 2 : 0} castShadow={false} receiveShadow={false}>
+        <boxGeometry args={[1, 1, 1]} />
+      </mesh>
+      {showCavity ? (
+        <lineSegments ref={cavity} geometry={edges} renderOrder={3}>
+          <lineDashedMaterial color="#146E54" dashSize={0.05} gapSize={0.035} />
+        </lineSegments>
+      ) : null}
+      <mesh ref={product} material={productMaterial} renderOrder={1}>
+        <boxGeometry args={[1, 1, 1]} />
+      </mesh>
       {showDimensions ? (
         <>
           <mesh ref={lengthShaft}>
@@ -289,25 +283,13 @@ function Carton({
             <meshBasicMaterial color="#142923" />
           </mesh>
           <group ref={lengthLabel}>
-            <Html center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
-              <span className="whitespace-nowrap rounded-full border border-line bg-white px-2 py-1 text-[11px] font-medium text-forest shadow-sm">
-                L {formatMm(design.external.l)}
-              </span>
-            </Html>
+            <DimensionLabel anchor={lengthLabel} text={`L ${formatMm(design.external.l)}`} />
           </group>
           <group ref={widthLabel}>
-            <Html center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
-              <span className="whitespace-nowrap rounded-full border border-line bg-white px-2 py-1 text-[11px] font-medium text-forest shadow-sm">
-                W {formatMm(design.external.w)}
-              </span>
-            </Html>
+            <DimensionLabel anchor={widthLabel} text={`W ${formatMm(design.external.w)}`} />
           </group>
           <group ref={heightLabel}>
-            <Html center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
-              <span className="whitespace-nowrap rounded-full border border-line bg-white px-2 py-1 text-[11px] font-medium text-forest shadow-sm">
-                H {formatMm(design.external.h)}
-              </span>
-            </Html>
+            <DimensionLabel anchor={heightLabel} text={`H ${formatMm(design.external.h)}`} />
           </group>
         </>
       ) : null}
@@ -318,11 +300,12 @@ function Carton({
 function OutlineBox({ design }: { design: PackagingDesign }) {
   const existing = design.existing
   if (!existing) return null
+  const clashes = statedPackTooSmall(design.product, existing.size)
   return (
     <mesh position={[0, existing.size.h / 200, 0]} raycast={() => null}>
       <boxGeometry args={[existing.size.l / 100, existing.size.h / 100, existing.size.w / 100]} />
       <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      <Edges color="#5C6B64" threshold={15} />
+      <Edges color={clashes ? '#9C3B2E' : '#5C6B64'} threshold={15} />
     </mesh>
   )
 }
@@ -342,9 +325,10 @@ function StudioRig({
   focusY: number
   reduced: boolean
 }) {
-  const { camera, controls } = useThree()
+  const { camera, controls, size } = useThree()
   const desiredPos = useRef(new THREE.Vector3())
   const desiredTarget = useRef(new THREE.Vector3())
+  const desiredZoom = useRef<number | null>(null)
   const anim = useRef(false)
   const ready = useRef(false)
   const fitRef = useRef(fitMm)
@@ -363,13 +347,22 @@ function StudioRig({
   }, [controls])
 
   useEffect(() => {
-    const framed = frameCamera(cameraView, fitRef.current, focusRef.current)
+    const ortho = camera instanceof THREE.OrthographicCamera
+    const framed = frameCamera(cameraView, fitRef.current, focusRef.current, size.height, ortho)
     desiredPos.current.copy(framed.position)
     desiredTarget.current.copy(framed.target)
+    desiredZoom.current = framed.zoom ?? null
     const orbit = asOrbit(controls)
+    const applyZoom = () => {
+      if (camera instanceof THREE.OrthographicCamera && framed.zoom) {
+        camera.zoom = framed.zoom
+        camera.updateProjectionMatrix()
+      }
+    }
     if (!ready.current) {
       camera.position.copy(framed.position)
       camera.lookAt(framed.target)
+      applyZoom()
       if (orbit) {
         orbit.target.copy(framed.target)
         orbit.update()
@@ -381,6 +374,7 @@ function StudioRig({
     if (reduced) {
       camera.position.copy(framed.position)
       camera.lookAt(framed.target)
+      applyZoom()
       if (orbit) {
         orbit.target.copy(framed.target)
         orbit.update()
@@ -389,12 +383,18 @@ function StudioRig({
       return
     }
     anim.current = true
-  }, [camera, cameraView, controls, reduced, viewSignal])
+  }, [camera, cameraView, controls, reduced, size.height, viewSignal])
 
   useImperativeHandle(
     imperativeRef,
     () => ({
       zoomBy(factor: number) {
+        if (camera instanceof THREE.OrthographicCamera) {
+          camera.zoom = THREE.MathUtils.clamp(camera.zoom / factor, 12, 600)
+          camera.updateProjectionMatrix()
+          desiredZoom.current = camera.zoom
+          return
+        }
         const orbit = asOrbit(controls)
         const target = orbit?.target.clone() ?? desiredTarget.current.clone()
         const offset = camera.position.clone().sub(target)
@@ -428,6 +428,10 @@ function StudioRig({
     } else {
       camera.lookAt(desiredTarget.current)
     }
+    if (camera instanceof THREE.OrthographicCamera && desiredZoom.current) {
+      camera.zoom = THREE.MathUtils.damp(camera.zoom, desiredZoom.current, 7, Math.min(delta, 0.05))
+      camera.updateProjectionMatrix()
+    }
     if (camera.position.distanceTo(desiredPos.current) < 0.02) anim.current = false
   })
 
@@ -438,7 +442,7 @@ function StudioRig({
       enableDamping={!reduced}
       dampingFactor={0.08}
       enablePan
-      minPolarAngle={0.05}
+      minPolarAngle={0}
       maxPolarAngle={Math.PI / 2.04}
       minDistance={1.8}
       maxDistance={18}
@@ -514,17 +518,34 @@ function SceneInner({
 }
 
 function SceneFallback({ design }: { design: PackagingDesign }) {
+  const place = centredPlacement(design.product, design.internal, design.external)
+  const clash = design.existing ? statedPackTooSmall(design.product, design.existing.size) : false
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-      <div className="h-56 w-full max-w-sm">
-        <FittedIso
-          length={design.external.l}
-          width={design.external.w}
-          height={design.external.h}
-          label={`Isometric carton ${formatMm(design.external.l)} by ${formatMm(design.external.w)} by ${formatMm(design.external.h)}`}
-        />
+      <div className="grid w-full max-w-lg gap-3 sm:grid-cols-[1.2fr_0.8fr]">
+        <div className="h-52">
+          <FittedIso
+            length={design.external.l}
+            width={design.external.w}
+            height={design.external.h}
+            label={`Outer carton ${formatMm(design.external.l)} by ${formatMm(design.external.w)} by ${formatMm(design.external.h)}`}
+          />
+        </div>
+        <div className="h-40 self-center">
+          <FittedIso
+            length={design.product.l}
+            width={design.product.w}
+            height={design.product.h}
+            label={`Product ${formatMm(design.product.l)} by ${formatMm(design.product.w)} by ${formatMm(design.product.h)}`}
+          />
+        </div>
       </div>
-      <p className="max-w-sm text-sm text-secondary">Interactive 3D needs WebGL. This isometric view still uses the calculated outer size.</p>
+      <p className="max-w-md text-sm leading-6 text-secondary">
+        Product {formatMm(design.product.l)} × {formatNumber(design.product.w)} × {formatNumber(design.product.h)} mm, centered in an internal cavity of {formatMm(design.internal.l)} × {formatNumber(design.internal.w)} × {formatNumber(design.internal.h)} mm.
+        Clearance {formatNumber(place.clearanceMm.l)} × {formatNumber(place.clearanceMm.w)} × {formatNumber(place.clearanceMm.h)} mm. Outer {formatMm(design.external.l)} × {formatNumber(design.external.w)} × {formatNumber(design.external.h)} mm.
+        {place.fits ? '' : ' The product is larger than the internal cavity and is not scaled down.'}
+        {clash ? ' The stated current pack is smaller than the product on at least one axis.' : ''}
+      </p>
     </div>
   )
 }
@@ -549,13 +570,24 @@ const PackagingScene = function PackagingScene(
   const [ok] = useState(hasWebGL)
   const ref = props.imperativeRef ?? null
   if (!ok) return <SceneFallback design={props.design} />
-  const initial = frameCamera('iso', Math.max(props.design.external.l, props.design.external.w, props.design.external.h, props.showOutline && props.design.existing ? props.design.existing.size.l : 0), props.design.external.h / 200)
+  const initial = frameCamera(
+    'iso',
+    Math.max(props.design.external.l, props.design.external.w, props.design.external.h, props.showOutline && props.design.existing ? props.design.existing.size.l : 0),
+    props.design.external.h / 200,
+    640,
+    !props.hero,
+  )
   return (
     <WebGLBoundary fallback={<SceneFallback design={props.design} />}>
       <Canvas
         className="h-full w-full"
         dpr={[1, 1.75]}
-        camera={{ position: [initial.position.x, initial.position.y, initial.position.z], fov: 32, near: 0.05, far: 80 }}
+        orthographic={!props.hero}
+        camera={
+          props.hero
+            ? { position: [initial.position.x, initial.position.y, initial.position.z], fov: 32, near: 0.05, far: 80 }
+            : { position: [initial.position.x, initial.position.y, initial.position.z], zoom: initial.zoom ?? 60, near: 0.1, far: 200 }
+        }
         gl={{ antialias: true, alpha: true }}
         onCreated={({ gl }) => {
           gl.setClearColor(0x000000, 0)

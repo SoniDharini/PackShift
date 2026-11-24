@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { BeforeAfter } from '../components/compare/BeforeAfter.tsx'
+import { PackEvaluationCard } from '../components/compare/PackEvaluationCard.tsx'
+import { OptimisationEngine } from '../components/compare/OptimisationEngine.tsx'
 import { ComparisonTable } from '../components/compare/ComparisonTable.tsx'
 import { MaterialBoard } from '../components/compare/MaterialBoard.tsx'
 import { WhyDesign } from '../components/compare/WhyDesign.tsx'
 import { WorkspaceHeader } from '../components/layout/WorkspaceHeader.tsx'
 import { DirtyNotice } from '../components/studio/DirtyNotice.tsx'
 import { ButtonLink } from '../components/ui/Button.tsx'
-import { formatLitres, formatMoney, formatPct, formatReduction } from '../lib/format.ts'
+import { describeEvaluation } from '../lib/evaluationCopy.ts'
+import { formatLitres, formatMoney, formatNumber, formatPct } from '../lib/format.ts'
 import { cn } from '../lib/cn.ts'
 import { useDesign } from '../state/DesignContext.tsx'
 
@@ -56,7 +59,8 @@ function SharedNumber({
 }
 
 export function OptimisePage() {
-  const { committedDesign: design, comparisons, updateCommittedFields } = useDesign()
+  const { committedDesign: design, comparisons, updateCommittedFields, optimiseResult, optimiseLoading } = useDesign()
+  const evaluation = design ? describeEvaluation(design, optimiseResult?.evaluation ?? null, optimiseLoading && !optimiseResult, comparisons) : null
   useEffect(() => {
     document.title = 'Optimisation — PackShift'
   }, [])
@@ -70,7 +74,7 @@ export function OptimisePage() {
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-deep">Optimisation</p>
             <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight sm:text-4xl">Compare the pack, not a slogan.</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-secondary">
-              Volume, sheet area, and cost for the last generated specification. Change a price or a thickness and the figures update.
+              A plain recommendation from the last packaging you generated. Prices and quantity update immediately. Change a measurement in the studio and generate again.
             </p>
           </div>
           <ButtonLink to="/studio" variant="secondary">
@@ -80,13 +84,21 @@ export function OptimisePage() {
         <DirtyNotice />
         {design ? (
           <>
+            <PackEvaluationCard design={design} evaluation={optimiseResult?.evaluation ?? null} checking={optimiseLoading} peers={comparisons} />
+            <section>
+              <h2 className="font-display text-xl font-semibold">Current vs new packaging</h2>
+            </section>
             <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
               {design.existing ? (
                 <>
-                  <Metric label="Existing volume" value={formatLitres(design.existing.volume)} detail="Stated pack, as entered" />
-                  <Metric label="Proposed volume" value={formatLitres(design.externalVolume)} detail="Outer box of the selected board" />
-                  <Metric label="Volume change" value={formatReduction(design.volumeReductionPct)} detail="Proposed outer versus stated pack" />
-                  <Metric label="Cost per unit" value={formatMoney(design.unitCost)} detail="Board, conversion, and insert" />
+                  <Metric
+                    label={design.existing.basis === 'external' ? 'Existing outer volume' : design.existing.basis === 'internal' ? 'Existing internal volume' : 'Stated volume'}
+                    value={formatLitres(design.existing.volume)}
+                    detail={design.existing.basis === 'external' ? 'Outside size of the current box' : 'This measurement is not the outside volume, so it is not used as the size comparison.'}
+                  />
+                  <Metric label="Proposed outer volume" value={formatLitres(design.externalVolume)} detail={`Outside size of ${design.material.name}`} />
+                  <Metric label="Size result" value={evaluation?.dimensionalValue ?? '—'} detail={evaluation?.sizeLine ?? ''} />
+                  <Metric label="Cost per package" value={formatMoney(design.unitCost)} detail={evaluation?.costDetail ?? design.material.name} />
                   <Metric
                     label="Difference per order"
                     value={design.orderCostDelta === null ? '—' : formatMoney(design.orderCostDelta)}
@@ -94,8 +106,8 @@ export function OptimisePage() {
                       design.orderCostDelta === null
                         ? 'No existing cost'
                         : design.orderCostDelta < 0
-                          ? `${formatMoney(Math.abs(design.orderCostDelta))} lower on ${design.quantity} packs`
-                          : `${formatMoney(design.orderCostDelta)} higher on ${design.quantity} packs`
+                          ? `${formatMoney(Math.abs(design.orderCostDelta))} lower on ${formatNumber(design.quantity)} packs`
+                          : `${formatMoney(design.orderCostDelta)} higher on ${formatNumber(design.quantity)} packs`
                     }
                   />
                 </>
@@ -111,7 +123,12 @@ export function OptimisePage() {
             </section>
             <div className="grid items-start gap-4 xl:grid-cols-[1.15fr_0.85fr]">
               <BeforeAfter design={design} />
-              <WhyDesign design={design} />
+              <details className="rounded-2xl border border-line bg-white p-5 shadow-card">
+                <summary className="cursor-pointer font-display text-xl font-semibold">View Calculation Details</summary>
+                <div className="mt-4">
+                  <WhyDesign design={design} />
+                </div>
+              </details>
             </div>
             <div className="grid gap-3 rounded-2xl border border-line bg-white p-4 shadow-card sm:grid-cols-3">
               <SharedNumber
@@ -136,6 +153,7 @@ export function OptimisePage() {
             </div>
             <MaterialBoard designs={comparisons} />
             <ComparisonTable designs={comparisons} selectedId={design.material.id} />
+            <OptimisationEngine />
           </>
         ) : (
           <div className="rounded-2xl border border-line bg-white p-8 text-center shadow-card">

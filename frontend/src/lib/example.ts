@@ -18,6 +18,8 @@ export const EXAMPLE_FORM: ProductForm = {
   existingLength: '250',
   existingWidth: '220',
   existingHeight: '180',
+  existingBasis: 'external',
+  existingThickness: '4',
   existingMaterial: 'Single-wall corrugated',
   existingUnitCost: '95',
 }
